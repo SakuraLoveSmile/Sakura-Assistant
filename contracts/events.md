@@ -13,13 +13,14 @@
 | `feedback_fault` | feedback | open | `feedback:<feedbackId>` | warning | 反馈进入 `failed` / `needs_review` 等错误态 |
 | `feedback_recovered` | feedback | resolve | `feedback:<feedbackId>` | info | 错误态恢复（重新入队 / 归档成功 / 人工解决） |
 | `agent_started` | device | null | null | info | 采集进程启动（含版本） |
+| `queue_overflow` | 任意 | null（独立消息） | null | warning | 来源持久队列溢出丢弃最旧条目的汇总事件（`body` 含丢弃条数与时间窗，见 §5） |
 | `custom` | 任意 | 按声明 | 按声明 | 按声明 | 扩展种类统一归入 |
 
 中枢**自产**事件（不由来源上报，由规则引擎 / 监测器生成，`sourceId` 指向被监测来源）：
 
 | kind | incidentAction | faultKey | 默认 severity | 说明 |
 |---|---|---|---|---|
-| `heartbeat_lost` | open | `heartbeat` | critical | 连续 `heartbeatSeconds` 无任何接入流量 |
+| `heartbeat_lost` | open | `heartbeat` | critical | 连续 `heartbeatSeconds` 无任何接入流量（仅 enabled 的 device 来源，见 §4） |
 | `heartbeat_back` | resolve | `heartbeat` | info | 接入恢复 |
 | `threshold` | open | `rule:<ruleId>:<labelSel>` | 规则定义 | 指标持续超限 |
 | `threshold_recovered` | resolve | 同上 | info | 回落并跨过回差 |
@@ -30,7 +31,6 @@
 | `pool_error` | open | `pool:<name>` | critical | 存储池 state ≠ ok |
 | `pool_back` | resolve | `pool:<name>` | info | 存储池恢复 ok |
 | `host_reboot` | null（独立消息） | null | info | `bootTime` 变化 |
-| `queue_overflow` | null | null | warning | 来源队列溢出丢事件（见 §5） |
 
 每条中枢自产事件也生成对应 Message（kind 同上），`eventId` 形如 `hub_<ulid>`。
 
@@ -83,8 +83,11 @@
   容器从列表消失（被删除）：已有开放故障 → resolve（summary 注记"容器已移除"），无开放故障 → 忽略。
 - **smart**：`smart=failing` → open（critical）；`ok` → resolve；`asleep` / `unsupported` / `failed` → **不迁移状态**（不可观测不判好也不判坏，能力缺失经 capabilities 单独呈现）。
 - **pool**：`state ∈ {degraded, error}` → open；`ok` → resolve；`unknown` / 缺席 → 不迁移。
-- **heartbeat**：距上次**任何**接入调用（metrics 或 events）超过 `heartbeatSeconds` → open `heartbeat`（critical）；任何新接入 → resolve。
+- **heartbeat**：仅对 `kind=device` 且 `enabled=true` 的来源判定 —— 距上次**任何**接入调用
+  （metrics 或 events）超过 `heartbeatSeconds` → open `heartbeat`（critical）；任何新接入 → resolve。
   同一失联期只开一次；恢复后再次失联开新轮次。
+  `kind=feedback` 来源**不做心跳判定**：它只在有事件时投递，无周期上报预期，失联不可观测
+  （其可用性经事件投递本身与附件回连体现）。`enabled=false` 的来源同样不判失联。
 - **host_reboot**：`sample.bootTime` 相对上次变化 → 独立 info 消息（非故障）。
 
 通知触发点（供 bridge.md 引用）：`incident_open`、`incident_resolved`、独立 `message` 三类需要通知；`incident_update` 只更新已有通知内容（`onlyAlertOnce`）。

@@ -121,7 +121,7 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 - **幂等**：`seq ≤ 已应用的最大 seq` → `202 {"accepted": false, "duplicate": true}`，丢弃整批（样本按 `(sourceId, ts)` 唯一，重放天然幂等）。
 - `reportIntervalSeconds` 回传中枢期望间隔，来源下次按此上报（默认 30s，可经规则接口调整）。
 - 缺失指标：字段缺席即"采不到"，中枢/UI 按 capabilities 与缺席显示「不支持/采集失败」，**绝不显示为正常**。
-- `sample.bootTime` 变化 → 中枢生成 `host_reboot` 事件；连续 `heartbeatSeconds`（默认 180s）无任何接入流量 → `heartbeat_lost` 故障（见 events.md）。
+- `sample.bootTime` 变化 → 中枢生成 `host_reboot` 事件；`enabled` 的 `kind=device` 来源连续 `heartbeatSeconds`（默认 180s）无任何接入流量 → `heartbeat_lost` 故障（见 events.md；`kind=feedback` 来源不做心跳判定）。
 - `401` 未知密钥；`403 source_disabled` 来源已停用（来源继续排队，恢复后补传）。
 
 ### POST /api/v1/ingest/events
@@ -180,8 +180,9 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
   "serverTime": "<iso>",
   "hubReachableHint": true,
   "sources": [
-    { "id": "src_…", "name": "公网服务器", "kind": "device",
-      "status": "online",                 // online | offline（>heartbeatSeconds 无接入）
+    { "id": "src_…", "name": "公网服务器", "kind": "device", "enabled": true,
+      "status": "online",                 // online | offline；device：enabled 且 ≤heartbeatSeconds 有接入为 online
+                                          // feedback：无心跳判定，enabled 即 online；任何来源 enabled=false 恒 offline
       "lastSeenAt": "<iso>", "agentVersion": "0.1.0", "hostname": "vps",
       "capabilities": { "containers": "ok", "smart": "unsupported", "storagePool": "unsupported" },
       "summary": {                        // 最近一次样本摘要；offline 或从未上报为 null
@@ -190,7 +191,7 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
         "uptimeSeconds": 123456
       }
     },
-    { "id": "src_…", "name": "Feedback", "kind": "feedback", "status": "online",
+    { "id": "src_…", "name": "Feedback", "kind": "feedback", "enabled": true, "status": "online",
       "lastSeenAt": "<iso>", "summary": null }
   ],
   "openFaults": [
@@ -220,7 +221,7 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 | `source` | 完整 Source 对象 | 状态、能力、摘要变化 |
 | `rules` | 完整 Rules 对象 | 告警规则新版本 |
 | `settings` | 完整 Settings 对象 | 免打扰等新版本 |
-| `tombstone` | `{ "type": "message|fault", "id": "…" }` | 历史清理删除（开放故障永不删除） |
+| `tombstone` | `{ "type": "message|fault|source", "id": "…" }` | message/fault 为历史清理删除（开放故障永不删除）；source 在 `DELETE /sources/:id` 后下发，客户端移除本地来源（其历史消息/故障保留） |
 
 - 一致性保证：同一 `changeSeq` 内对象自洽；客户端按序应用即可得到与中枢一致的本地状态。
 
@@ -283,9 +284,11 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 
 单条详情：`{ "message": Message, "fault": Fault|null }`（属于故障时携带故障全文）。
 
-### GET /api/v1/messages/:id/attachments/:attachmentId
+### GET /api/v1/messages/:id/attachments/{attId…}
 
-附件字节按需获取。中枢按来源 `attachmentBaseUrl` 回连来源只读接口取字节并透传。
+附件字节按需获取。`{attId…}` 为**路径尾部通配**，可含 `/`（如 `screenshot`、`logs/<logId>`），
+与附件描述符 `id` 逐字符一致（Go 1.22 ServeMux 写作 `{attId...}`）。中枢按来源
+`attachmentBaseUrl` 回连来源只读接口取字节并透传。
 
 - `200`：`Content-Type` = 描述符 `mime`，`Content-Length`，`Cache-Control: private, max-age=300`，`ETag` = sha256（有则）。
 - `404` 附件不存在；`502 attachment_unavailable` 上游不可达 / 未配置回连地址；附件描述符存在但上游 404 同样 `404`。
@@ -324,7 +327,7 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 
 ```jsonc
 { "id": "src_…", "name": "飞牛 NAS", "kind": "device",
-  "enabled": true, "status": "offline", "lastSeenAt": "<iso>",
+  "enabled": true, "status": "offline", "lastSeenAt": "<iso>",   // status 语义同 §3 overview
   "keyHint": "…a1b2",                     // 仅末 4 位
   "attachmentBaseUrl": "http://nas.local:8787",   // feedback 类来源的附件回连地址；device 类为 null
   "agentVersion": "0.1.0", "hostname": "fn-nas",
@@ -340,14 +343,14 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 | `GET /api/v1/sources/:id` | `{ "source": Source }` |
 | `PATCH /api/v1/sources/:id` `{ "name"?, "enabled"?, "attachmentBaseUrl"? }` | `200 { "source": Source }` |
 | `POST /api/v1/sources/:id/rotate-key` | `200 { "accessKey": "ask_…", "install": 同创建 }`；旧密钥立即失效，来源事件流不清除 |
-| `DELETE /api/v1/sources/:id` | `204`；指标 / 消息 / 故障历史保留，密钥失效 |
+| `DELETE /api/v1/sources/:id` | `204`；指标 / 消息 / 故障历史保留，密钥失效，经 sync 下发 `tombstone(source)` |
 
 ### 告警规则
 
 ```jsonc
 // GET /api/v1/rules →
 { "version": 3,
-  "heartbeatSeconds": 180,                 // 失联判定，可改（60..3600）
+  "heartbeatSeconds": 180,                 // 失联判定（仅 enabled 的 device 来源），可改（60..3600）
   "rules": [
     { "id": "cpu_high", "kind": "threshold", "metric": "cpu_percent", "label": null,
       "op": "gt", "value": 90, "forSeconds": 180,
