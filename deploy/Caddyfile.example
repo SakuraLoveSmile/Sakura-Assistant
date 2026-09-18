@@ -1,0 +1,9 @@
+# Caddy 反代示例（自动签发 TLS）。把域名换成实际中枢域名。
+hub.example.com {
+	reverse_proxy 127.0.0.1:8795
+	# SSE 长连接：关闭缓冲，避免事件被攒批
+	@stream path /api/v1/stream
+	reverse_proxy @stream 127.0.0.1:8795 {
+		flush_interval -1
+	}
+}

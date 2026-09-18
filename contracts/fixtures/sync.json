@@ -1,0 +1,77 @@
+{
+  "cursor": 1240,
+  "hasMore": false,
+  "changes": [
+    {
+      "changeSeq": 1238,
+      "type": "message",
+      "data": {
+        "id": "msg_01J6ZMSG0000000000001",
+        "changeSeq": 1238,
+        "sourceId": "src_01J6ZFBSRC0000000000001",
+        "sourceName": "Feedback",
+        "kind": "feedback_created",
+        "severity": "info",
+        "title": "新反馈：登录页按钮无响应",
+        "body": "点击登录按钮没有任何反应，控制台有报错。",
+        "occurredAt": "2026-09-18T06:30:55.000Z",
+        "receivedAt": "2026-09-18T06:31:00.200Z",
+        "readAt": null,
+        "faultId": null,
+        "incident": null,
+        "ref": { "feedbackId": "01J6ZFBK0EXAMPLE" },
+        "attachments": [
+          { "id": "screenshot", "kind": "screenshot", "filename": "screenshot.png",
+            "mime": "image/png", "byteSize": 182344 },
+          { "id": "logs/log_01J6Z1", "kind": "log", "filename": "console.log",
+            "mime": "text/plain", "byteSize": 9034 }
+        ]
+      }
+    },
+    {
+      "changeSeq": 1239,
+      "type": "fault",
+      "data": {
+        "id": "flt_01J6ZFAULT000000000001",
+        "changeSeq": 1239,
+        "sourceId": "src_01J6ZNAS00000000000001",
+        "sourceName": "飞牛 NAS",
+        "faultKey": "container:kaneo",
+        "severity": "warning",
+        "title": "容器 kaneo 退出",
+        "summary": "exitCode=137",
+        "state": "open",
+        "incident": 1,
+        "openedAt": "2026-09-18T06:25:10.000Z",
+        "lastEventAt": "2026-09-18T06:28:40.000Z",
+        "resolvedAt": null,
+        "resolvedBy": null,
+        "eventCount": 2,
+        "readAt": null,
+        "mutedAt": null,
+        "mutedUntil": null
+      }
+    },
+    {
+      "changeSeq": 1240,
+      "type": "message",
+      "data": {
+        "id": "msg_01J6ZMSG0000000000002",
+        "changeSeq": 1240,
+        "sourceId": "src_01J6ZNAS00000000000001",
+        "sourceName": "飞牛 NAS",
+        "kind": "container_exit",
+        "severity": "warning",
+        "title": "容器 kaneo 退出",
+        "body": "exitCode=137",
+        "occurredAt": "2026-09-18T06:25:10.000Z",
+        "receivedAt": "2026-09-18T06:25:12.100Z",
+        "readAt": null,
+        "faultId": "flt_01J6ZFAULT000000000001",
+        "incident": 1,
+        "ref": null,
+        "attachments": []
+      }
+    }
+  ]
+}

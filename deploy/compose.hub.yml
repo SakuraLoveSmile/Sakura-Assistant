@@ -1,0 +1,33 @@
+# 中枢部署骨架（公网服务器）。用法：
+#   cp hub.env.example hub.env  # 填值（600 权限）
+#   docker compose -f compose.hub.yml --env-file hub.env up -d
+# TLS 由前置反代负责（Caddyfile.example 或既有 nginx），容器本身只监听内网/本机端口。
+
+services:
+  hub:
+    image: assistant-hub:${HUB_VERSION:-local}
+    build:
+      context: ../hub
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ASSIST_BIND: ":8795"
+      ASSIST_DB_PATH: "/data/assistant.db"
+      ASSIST_ADMIN_USER: ${ASSIST_ADMIN_USER:?}
+      ASSIST_ADMIN_PASSWORD: ${ASSIST_ADMIN_PASSWORD:?}
+      ASSIST_BASE_URL: ${ASSIST_BASE_URL:?}        # 如 https://hub.example.com，用于生成安装命令
+      ASSIST_RETENTION_RAW_DAYS: ${ASSIST_RETENTION_RAW_DAYS:-7}
+      ASSIST_RETENTION_ROLLUP_DAYS: ${ASSIST_RETENTION_ROLLUP_DAYS:-90}
+      ASSIST_RETENTION_MESSAGES_DAYS: ${ASSIST_RETENTION_MESSAGES_DAYS:-90}
+    volumes:
+      - hub-data:/data
+    ports:
+      - "127.0.0.1:8795:8795"    # 只绑回环，对外经反代 TLS
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8795/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  hub-data:

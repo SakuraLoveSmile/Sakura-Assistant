@@ -1,0 +1,71 @@
+{
+  "serverTime": "2026-09-18T06:32:00.000Z",
+  "hubReachableHint": true,
+  "sources": [
+    {
+      "id": "src_01J6ZVPS00000000000001",
+      "name": "公网服务器",
+      "kind": "device",
+      "status": "online",
+      "lastSeenAt": "2026-09-18T06:31:58.000Z",
+      "agentVersion": "0.1.0",
+      "hostname": "vps-1",
+      "capabilities": { "containers": "ok", "smart": "unsupported", "storagePool": "unsupported" },
+      "summary": {
+        "ts": "2026-09-18T06:31:56.000Z",
+        "cpuPercent": 8.2,
+        "memPercent": 38.9,
+        "disks": [ { "mount": "/", "percent": 41.0 } ],
+        "uptimeSeconds": 4501234
+      }
+    },
+    {
+      "id": "src_01J6ZNAS00000000000001",
+      "name": "飞牛 NAS",
+      "kind": "device",
+      "status": "online",
+      "lastSeenAt": "2026-09-18T06:31:57.000Z",
+      "agentVersion": "0.1.0",
+      "hostname": "fn-nas",
+      "capabilities": { "containers": "ok", "smart": "asleep", "storagePool": "ok" },
+      "summary": {
+        "ts": "2026-09-18T06:31:55.000Z",
+        "cpuPercent": 12.3,
+        "memPercent": 45.6,
+        "disks": [ { "mount": "/", "percent": 55.1 }, { "mount": "/vol1", "percent": 81.0 } ],
+        "uptimeSeconds": 987654
+      }
+    },
+    {
+      "id": "src_01J6ZFBSRC0000000000001",
+      "name": "Feedback",
+      "kind": "feedback",
+      "status": "online",
+      "lastSeenAt": "2026-09-18T06:31:00.000Z",
+      "agentVersion": null,
+      "hostname": null,
+      "capabilities": {},
+      "summary": null
+    }
+  ],
+  "openFaults": [
+    {
+      "id": "flt_01J6ZFAULT000000000001",
+      "sourceId": "src_01J6ZNAS00000000000001",
+      "sourceName": "飞牛 NAS",
+      "faultKey": "container:kaneo",
+      "severity": "warning",
+      "title": "容器 kaneo 退出",
+      "openedAt": "2026-09-18T06:25:10.000Z",
+      "lastEventAt": "2026-09-18T06:28:40.000Z",
+      "incident": 1,
+      "eventCount": 2,
+      "muted": false,
+      "read": false
+    }
+  ],
+  "unreadMessages": 4,
+  "rulesVersion": 3,
+  "settingsVersion": 2,
+  "dnd": { "enabled": true, "start": "23:00", "end": "08:00", "timezone": "Asia/Shanghai" }
+}

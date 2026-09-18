@@ -1,0 +1,40 @@
+# Go
+hub/assistant-hub
+agent/assistant-agent
+*.test
+*.out
+
+# Flutter / Dart
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/build/
+app/.idea/
+*.iml
+
+# Android
+app/android/.gradle/
+app/android/local.properties
+app/android/app/build/
+app/android/key.properties
+*.keystore
+*.jks
+
+# 环境与密钥
+.env
+*.env
+!*.env.example
+deploy/*.env
+
+# 数据与产物
+*.db
+*.db-wal
+*.db-shm
+data/
+dist/
+*.apk
+*.aab
+
+# 系统
+.DS_Store

@@ -1,0 +1,49 @@
+{
+  "sentAt": "2026-09-18T06:31:00.000Z",
+  "events": [
+    {
+      "eventId": "fb_01J6ZEXAMPLE000000000001",
+      "seq": 7,
+      "kind": "feedback_created",
+      "occurredAt": "2026-09-18T06:30:55.000Z",
+      "severity": "info",
+      "faultKey": null,
+      "incidentAction": null,
+      "title": "新反馈：登录页按钮无响应",
+      "body": "点击登录按钮没有任何反应，控制台有报错。",
+      "ref": { "feedbackId": "01J6ZFBK0EXAMPLE" },
+      "attachments": [
+        { "id": "screenshot", "kind": "screenshot", "filename": "screenshot.png",
+          "mime": "image/png", "byteSize": 182344, "sha256": "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c" },
+        { "id": "logs/log_01J6Z1", "kind": "log", "filename": "console.log",
+          "mime": "text/plain", "byteSize": 9034, "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae" }
+      ]
+    },
+    {
+      "eventId": "fb_01J6ZEXAMPLE000000000002",
+      "seq": 8,
+      "kind": "feedback_fault",
+      "occurredAt": "2026-09-18T06:30:57.000Z",
+      "severity": "warning",
+      "faultKey": "feedback:01J6ZFBK0EXAMPLE",
+      "incidentAction": "open",
+      "title": "反馈处理失败：AI 整理超时",
+      "body": "needs_review: ai_timeout after 30s",
+      "ref": { "feedbackId": "01J6ZFBK0EXAMPLE" },
+      "attachments": []
+    },
+    {
+      "eventId": "fb_01J6ZEXAMPLE000000000003",
+      "seq": 9,
+      "kind": "feedback_recovered",
+      "occurredAt": "2026-09-18T06:31:00.000Z",
+      "severity": "info",
+      "faultKey": "feedback:01J6ZFBK0EXAMPLE",
+      "incidentAction": "resolve",
+      "title": "反馈已恢复：重新入队成功",
+      "body": "管理员执行 retry，状态回到 processing。",
+      "ref": { "feedbackId": "01J6ZFBK0EXAMPLE" },
+      "attachments": []
+    }
+  ]
+}

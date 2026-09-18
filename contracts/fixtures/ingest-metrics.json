@@ -1,0 +1,39 @@
+{
+  "seq": 42,
+  "sentAt": "2026-09-18T06:30:00.000Z",
+  "agent": { "version": "0.1.0", "os": "linux", "arch": "arm64", "hostname": "fn-nas" },
+  "capabilities": {
+    "containers": "ok",
+    "smart": "asleep",
+    "storagePool": "ok",
+    "network": "ok"
+  },
+  "sample": {
+    "ts": "2026-09-18T06:29:58.000Z",
+    "cpuPercent": 12.3,
+    "memPercent": 45.6,
+    "memUsedBytes": 6123456789,
+    "memTotalBytes": 13421772800,
+    "load1": 0.42,
+    "uptimeSeconds": 987654,
+    "bootTime": "2026-09-06T20:15:04.000Z",
+    "disks": [
+      { "mount": "/", "percent": 55.1, "usedBytes": 59055800320, "totalBytes": 107374182400, "fstype": "ext4" },
+      { "mount": "/vol1", "percent": 81.0, "usedBytes": 3298534883328, "totalBytes": 4073741824000, "fstype": "btrfs" }
+    ],
+    "net": { "rxBps": 152345, "txBps": 46789 },
+    "containers": [
+      { "name": "feedback", "state": "running", "exitCode": null, "startedAt": "2026-09-17T10:00:00.000Z", "restartCount": 0 },
+      { "name": "kaneo", "state": "running", "exitCode": null, "startedAt": "2026-09-17T10:00:05.000Z", "restartCount": 1 }
+    ],
+    "nas": {
+      "disks": [
+        { "dev": "sda", "smart": "ok", "tempC": 38 },
+        { "dev": "sdb", "smart": "asleep" }
+      ],
+      "pools": [
+        { "name": "storage1", "state": "ok" }
+      ]
+    }
+  }
+}
