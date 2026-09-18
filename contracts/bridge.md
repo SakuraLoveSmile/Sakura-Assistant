@@ -15,10 +15,10 @@ Dart → 原生（均 async 返回）：
 
 | 方法 | 参数 | 返回 | 语义 |
 |---|---|---|---|
-| `configure` | `{ "hubUrl": string, "token": string, "reportIntervalSeconds": int, "dnd": { "enabled": bool, "start": "HH:mm", "end": "HH:mm", "timezone": "Asia/Shanghai" } }` | `{ "ok": true }` | 写入原生配置副本并立即生效；token 变化重建 SSE；dnd 变化重算抑制状态。**Dart 侧每次登录 / 设置变更 / 冷启动都会调用**（幂等） |
+| `configure` | `{ "hubUrl": string, "token": string, "refreshToken": string, "reportIntervalSeconds": int, "dnd": { "enabled": bool, "start": "HH:mm", "end": "HH:mm", "timezone": "Asia/Shanghai" } }` | `{ "ok": true }` | 写入原生配置副本并立即生效；token/refreshToken 变化重建 SSE；dnd 变化重算抑制状态。**Dart 侧每次登录 / 设置变更 / 冷启动都会调用**（幂等） |
 | `startService` | — | `{ "running": true }` | 启动前台服务（含常驻通知）；已运行则幂等返回 |
 | `stopService` | — | `{ "running": false }` | 停止前台服务并清除常驻通知（业务通知保留） |
-| `getServiceState` | — | `{ "running": bool, "hubReachable": bool, "lastSyncAt": string?, "lastChangeSeq": int, "dndActive": bool, "heldCount": int, "lastError": string? }` | 供首页状态条与设置页显示；`hubReachable` = SSE 通道是否建立（中枢不可达）；手机断网由 Dart 侧 connectivity 自行区分显示 |
+| `getServiceState` | — | `{ "running": bool, "hubReachable": bool, "lastSyncAt": string?, "lastChangeSeq": int, "dndActive": bool, "heldCount": int, "authExpired": bool, "lastError": string? }` | 供首页状态条与设置页显示；`hubReachable` = SSE 通道是否建立（中枢不可达）；手机断网由 Dart 侧 connectivity 自行区分显示；`authExpired` = refresh 已失效、需重新登录（此时 SSE 停摆，见 §3） |
 | `getLaunchPayload` | — | `{ "route": "message"|"fault"|"home", "id": string? }` 或 `null` | **冷启动**经通知点开的跳转目标；取一次即清除。Dart 在 `main()` 早期调用 |
 | `consumePendingRoute` | — | 同上 | 热启动 / 前台时事件通道未及时送达的兜底拉取 |
 | `openNotificationSettings` | — | `bool` | 跳系统通知设置页（本应用） |
@@ -62,6 +62,9 @@ Dart → 原生（均 async 返回）：
 - **断线策略**：SSE 断开 → 指数退避重连（1s→60s 封顶，网络恢复立即重试）；
   另挂 WorkManager 周期兜底（15min，防止 SSE 僵死与系统误杀后自愈）。
   `hubReachable=false` 期间收到的通知事件在重连后经 `since` 续传补回（中枢保留变更窗口）。
+- **401 自愈**：SSE / 轮询遇 `401` → 用本地 `refreshToken` 调 `POST /api/v1/auth/refresh`
+  （一次性轮换；成功后更新本地 token/refreshToken 副本并立即重连，不打扰用户）。
+  `invalid_refresh` → 置 `authExpired=true`、停止重连，待 Dart 重新登录后 `configure` 恢复。
 - **重启 / 升级**：`BOOT_COMPLETED` + `MY_PACKAGE_REPLACED` 接收器在用户曾启动服务时自动拉起前台服务；
   「强行停止」后不承诺拉起（系统限制，设置页明示）。
 - **去抖**：同一 faultId 的 incident 通知 60s 内最多更新 3 次（防风暴刷屏；内容始终为最新）。
@@ -71,7 +74,7 @@ Dart → 原生（均 async 返回）：
 
 `Room`/SQLite 库 `assistant_native.db`（与 Dart 侧 `assistant_cache.db` 互不干扰）：
 
-- `config`：hubUrl、token、reportInterval、dnd 副本、lastChangeSeq；
+- `config`：hubUrl、token、refreshToken、reportInterval、dnd 副本、lastChangeSeq；
 - `notified`：faultId → (incident, lastNotifiedAt, muted) —— 静音映射随 SSE fault 事件刷新；
 - `held`：DND 窗口内被抑制通知的计数与最后标题（窗口结束消费）。
 

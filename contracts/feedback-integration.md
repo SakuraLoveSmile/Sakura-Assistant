@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS assist_outbox (
   seq          INTEGER NOT NULL,          -- 来源事件序号：单排行号计数器分配，单调递增
   kind         TEXT NOT NULL,             -- feedback_created | feedback_fault | feedback_recovered
   payload_json TEXT NOT NULL,             -- 完整 event 对象（api-v1 §2 单元素结构）
-  state        TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','sent')),
+  state        TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','sent','dead')),
   attempts     INTEGER NOT NULL DEFAULT 0,
   next_attempt_at TEXT,                   -- 退避后的下次尝试时刻
   created_at   TEXT NOT NULL,
@@ -47,13 +47,16 @@ CREATE TABLE IF NOT EXISTS assist_outbox_seq (id INTEGER PRIMARY KEY CHECK (id =
   - `feedback_recovered`：`incidentAction=resolve`，同 faultKey，`severity=info`。
 - **投递循环**：独立 async worker（不占用请求线程、不被请求等待）。
   取 `state=pending AND next_attempt_at<=now` 按 seq 升序每批 ≤50 条 POST `/api/v1/ingest/events`；
-  全部 accepted/duplicates → 标 `sent`（duplicates 也算送达）；含 rejected → 对账后单独标记重试。
+  全部 accepted/duplicates → 标 `sent`（duplicates 也算送达）；含 `rejected` → 该条按同一退避重试，
+  `attempts ≥ 10` 仍未被接受 → 标 `dead`（不再投递；行保留可查并记日志，绝不静默丢弃）。
   失败退避：1s→2s→5s→30s→5min 封顶（`attempts` 计数，`next_attempt_at` 持久化，重启后继续）。
 - **中枢不可达**：网络错 / 5xx / `403` → 留在 pending 按退避重试；`401`（密钥失效）→ 停发并每 5min 探测。
 - **溢出**：`pending` 超过 `FEEDBACK_ASSIST_QUEUE_MAX` → 新事件仍入队但**丢弃最旧 pending**
   （每删一批记一条 `queue_overflow` 事件入队，含丢弃数与时间窗）。不阻塞、不占满磁盘、不静默。
 - **绝不阻塞业务**：outbox 写入只追加一行；投递失败只影响自身重试。反馈提交、管理操作、worker 均不等待投递。
 - 优雅退出：停止 worker → 完成在途批次 → 关库；pending 行下次启动继续。
+- **清理**：worker 启动时及每 24h 删除终态行（`sent` 按 `sent_at`、`dead` 按 `created_at`）
+  超过 7 天的记录 —— outbox 不无限增长。
 
 ## 3. 只读附件接口（中枢 → Feedback）
 
