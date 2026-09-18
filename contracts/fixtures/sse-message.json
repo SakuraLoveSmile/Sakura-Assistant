@@ -1,0 +1,23 @@
+{
+  "_comment": "GET /api/v1/stream 中 event: message 的 data 部分示例（notify 块仅 SSE 携带）",
+  "id": "msg_01J6ZMSG0000000000003",
+  "changeSeq": 1241,
+  "sourceId": "src_01J6ZNAS00000000000001",
+  "sourceName": "飞牛 NAS",
+  "kind": "heartbeat_lost",
+  "severity": "critical",
+  "title": "飞牛 NAS 失联",
+  "body": "已连续 180 秒无心跳上报",
+  "occurredAt": "2026-09-18T06:35:00.000Z",
+  "receivedAt": "2026-09-18T06:35:00.050Z",
+  "readAt": null,
+  "faultId": "flt_01J6ZHB000000000000001",
+  "incident": 1,
+  "ref": null,
+  "attachments": [],
+  "notify": {
+    "kind": "incident_open",
+    "faultId": "flt_01J6ZHB000000000000001",
+    "muted": false
+  }
+}
