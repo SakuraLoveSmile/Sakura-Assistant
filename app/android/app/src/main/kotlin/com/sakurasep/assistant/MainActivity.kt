@@ -1,0 +1,5 @@
+package com.sakurasep.assistant
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
