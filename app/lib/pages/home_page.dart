@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../api/api_exception.dart';
+import '../feedback/feedback_host.dart';
 import '../models/fault.dart';
 import '../models/overview.dart';
 import '../state/data_providers.dart';
@@ -63,6 +64,11 @@ class _HomePageState extends ConsumerState<HomePage> {
       appBar: AppBar(
         title: const Text('Assistant'),
         actions: [
+          IconButton(
+            tooltip: '反馈',
+            icon: const Icon(Icons.feedback_outlined),
+            onPressed: () => openFeedbackEntry(context, ref),
+          ),
           _UnreadAction(),
           IconButton(
             tooltip: '接入管理',

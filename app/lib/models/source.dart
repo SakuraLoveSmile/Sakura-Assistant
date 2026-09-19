@@ -50,6 +50,7 @@ class Source {
     this.summary,
     this.enabled = true,
     this.keyHint,
+    this.mgmtKeyHint,
     this.attachmentBaseUrl,
     this.installHint,
     this.createdAt,
@@ -68,6 +69,9 @@ class Source {
   final SourceSummary? summary;
   final bool enabled;
   final String? keyHint;
+
+  /// v1.1：管理凭证末 4 位回显（仅 feedback 类来源有意义；null = 未配置）。
+  final String? mgmtKeyHint;
   final String? attachmentBaseUrl;
   final Object? installHint;
   final DateTime? createdAt;
@@ -93,6 +97,7 @@ class Source {
             json['summary'] == null ? null : SourceSummary.fromJson(asMap(json['summary'])),
         enabled: asBool(json['enabled'], true),
         keyHint: asStringOrNull(json['keyHint']),
+        mgmtKeyHint: asStringOrNull(json['mgmtKeyHint']),
         attachmentBaseUrl: asStringOrNull(json['attachmentBaseUrl']),
         installHint: json['installHint'],
         createdAt: asDateOrNull(json['createdAt']),
@@ -122,6 +127,7 @@ class Source {
               },
         'enabled': enabled,
         'keyHint': keyHint,
+        'mgmtKeyHint': mgmtKeyHint,
         'attachmentBaseUrl': attachmentBaseUrl,
         'installHint': installHint,
         'createdAt': createdAt?.toUtc().toIso8601String(),

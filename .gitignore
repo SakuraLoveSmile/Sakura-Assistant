@@ -35,6 +35,8 @@ deploy/*.env
 dist/
 *.apk
 *.aab
+# 发布产物暂存（产物只进 GitHub Release，不进仓库）
+/release/
 
 # 系统
 .DS_Store

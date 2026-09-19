@@ -51,6 +51,7 @@ Gradle wrapper / 版本目录固定到具体版本。
 | `go_router` | 最新稳定 | 路由 + 通知跳转 |
 | `connectivity_plus` | 最新稳定 | 手机断网 vs 中枢不可达区分 |
 | `intl` + `flutter_localizations` | SDK 配套 | 中文 UI / 时间格式 |
+| `feedback_widget` | **git 固定 SHA**（Sakura-Feedback 仓 `flutter/feedback`，发布版锁定） | v1.1 反馈提交：面板登录、截图遮挡、日志附件（开发期可用 path 依赖，发布锁 `pubspec.lock` 的 resolved SHA） |
 
 dev：`flutter_test`、`mocktail`（或 `mockito`）、`golden_toolkit`（可选）。
 

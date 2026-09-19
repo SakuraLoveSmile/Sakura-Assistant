@@ -194,6 +194,9 @@ func toSourceJSON(s *sourceRow, heartbeatSeconds int64) *sourceJSON {
 			}
 		}
 	}
+	if s.MgmtKeyHint != "" {
+		j.MgmtKeyHint = &s.MgmtKeyHint
+	}
 	if s.AttachmentBaseURL.Valid {
 		j.AttachmentBaseURL = &s.AttachmentBaseURL.String
 	}
@@ -222,7 +225,8 @@ func toSourceJSON(s *sourceRow, heartbeatSeconds int64) *sourceJSON {
 
 const sourceCols = `id,name,kind,enabled,key_hash,key_plain,key_hint,attachment_base_url,
   agent_version,agent_os,agent_arch,hostname,capabilities,last_seen_at,last_metrics_seq,
-  last_event_seq,last_boot_time,last_summary,prev_sample,deleted_at,created_at,updated_at`
+  last_event_seq,last_boot_time,last_summary,prev_sample,deleted_at,created_at,updated_at,
+  mgmt_key_plain,mgmt_key_hint`
 
 func scanSource(row interface{ Scan(...any) error }) (*sourceRow, error) {
 	var s sourceRow
@@ -230,7 +234,8 @@ func scanSource(row interface{ Scan(...any) error }) (*sourceRow, error) {
 	err := row.Scan(&s.ID, &s.Name, &s.Kind, &enabled, &s.KeyHash, &s.KeyPlain, &s.KeyHint,
 		&s.AttachmentBaseURL, &s.AgentVersion, &s.AgentOS, &s.AgentArch, &s.Hostname,
 		&s.Capabilities, &s.LastSeenAt, &s.LastMetricsSeq, &s.LastEventSeq, &s.LastBootTime,
-		&s.LastSummary, &s.PrevSample, &s.DeletedAt, &s.CreatedAt, &s.UpdatedAt)
+		&s.LastSummary, &s.PrevSample, &s.DeletedAt, &s.CreatedAt, &s.UpdatedAt,
+		&s.MgmtKeyPlain, &s.MgmtKeyHint)
 	if err != nil {
 		return nil, err
 	}

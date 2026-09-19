@@ -36,7 +36,8 @@ type app struct {
 	cfg          config
 	adminHash    []byte
 	loginLimiter *loginLimiter
-	httpClient   *http.Client
+	httpClient   *http.Client // 只读回连（附件/详情，10s）
+	httpClientOp *http.Client // 管理面回连（列表/操作，30s）
 }
 
 // routes 注册全部 v1 端点。
@@ -75,7 +76,14 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/sources/{id}", a.requireClient(a.handleSourceGet))
 	mux.HandleFunc("PATCH /api/v1/sources/{id}", a.requireClient(a.handleSourcePatch))
 	mux.HandleFunc("POST /api/v1/sources/{id}/rotate-key", a.requireClient(a.handleSourceRotateKey))
+	mux.HandleFunc("POST /api/v1/sources/{id}/rotate-mgmt-key", a.requireClient(a.handleSourceRotateMgmtKey))
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", a.requireClient(a.handleSourceDelete))
+
+	// Feedback 管理代理组（§3.1，按来源隔离）
+	mux.HandleFunc("GET /api/v1/sources/{srcId}/feedback", a.requireClient(a.handleFeedbackList))
+	mux.HandleFunc("GET /api/v1/sources/{srcId}/feedback/{fbId}", a.requireClient(a.handleFeedbackDetail))
+	mux.HandleFunc("POST /api/v1/sources/{srcId}/feedback/{fbId}/action", a.requireClient(a.handleFeedbackAction))
+	mux.HandleFunc("GET /api/v1/sources/{srcId}/feedback/{fbId}/attachments/{attId...}", a.requireClient(a.handleFeedbackAttachment))
 	mux.HandleFunc("GET /api/v1/rules", a.requireClient(a.handleRulesGet))
 	mux.HandleFunc("PUT /api/v1/rules", a.requireClient(a.handleRulesPut))
 	mux.HandleFunc("GET /api/v1/settings", a.requireClient(a.handleSettingsGet))

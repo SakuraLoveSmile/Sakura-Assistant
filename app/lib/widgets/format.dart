@@ -109,3 +109,65 @@ String kindLabel(String kind) {
       return kind;
   }
 }
+
+// ---------------- 反馈管理（api-v1 §3.1 / feedback-integration §3） ----------------
+
+/// 反馈收件箱生命周期（mgmtState）→ 中文标签。
+String feedbackMgmtLabel(String? state) => switch (state) {
+      'inbox' => '收件箱',
+      'archived' => '已归档',
+      'trash' => '回收站',
+      _ => (state == null || state.isEmpty) ? '—' : state,
+    };
+
+/// 反馈处理状态（上游 status 字段，未知值原样显示）。
+String feedbackStatusLabel(String? status) => switch (status) {
+      'queued' => '排队中',
+      'processing' => '处理中',
+      'archived' => '已归档',
+      'failed' => '处理失败',
+      'needs_review' => '待复核',
+      'needs_info' => '待补充信息',
+      _ => (status == null || status.isEmpty) ? '—' : status,
+    };
+
+/// 问题单状态（issueStatus）→ 中文标签。
+String feedbackIssueLabel(String? status) => switch (status) {
+      'open' => '待处理',
+      'waiting_user' => '等待用户',
+      'waiting_admin' => '等待管理员',
+      'resolved' => '已解决',
+      _ => (status == null || status.isEmpty) ? '—' : status,
+    };
+
+/// 收集 / 归档进度（collectionState）→ 中文标签。
+String feedbackCollectionLabel(String? state) => switch (state) {
+      'waiting_configuration' => '等待配置',
+      'waiting_source_confirmation' => '等待来源确认',
+      'waiting_manual_archive' => '等待手动归档',
+      'queued' => '排队中',
+      _ => (state == null || state.isEmpty) ? '—' : state,
+    };
+
+/// 归档阶段（archiveStage）→ 中文标签。
+String feedbackArchiveStageLabel(String? stage) => switch (stage) {
+      'task_pending' => '任务待创建',
+      'task_created' => '任务已创建',
+      'asset_uploading' => '资产上传中',
+      'asset_finalized' => '资产已上传',
+      'comment_pending' => '评论待写入',
+      'complete' => '归档完成',
+      _ => (stage == null || stage.isEmpty) ? '—' : stage,
+    };
+
+/// 管理动作 → 中文标签（feedback-integration §4.2 七动作）。
+String feedbackActionLabel(String action) => switch (action) {
+      'archive' => '归档',
+      'unarchive' => '取消归档',
+      'trash' => '移入回收站',
+      'restore' => '恢复',
+      'resume_processing' => '恢复处理',
+      'retry' => '重试处理',
+      'recheck' => '重新检查',
+      _ => action,
+    };

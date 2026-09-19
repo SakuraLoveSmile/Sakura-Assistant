@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS sources (
   key_hash             TEXT NOT NULL,
   key_plain            TEXT NOT NULL DEFAULT '',
   key_hint             TEXT NOT NULL DEFAULT '',
+  mgmt_key_plain       TEXT NOT NULL DEFAULT '',
+  mgmt_key_hint        TEXT NOT NULL DEFAULT '',
   attachment_base_url  TEXT,
   agent_version        TEXT,
   agent_os             TEXT,
@@ -198,5 +200,45 @@ func openDB(path string) (*sql.DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	if err := migrateSourcesV11(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate sources v1.1: %w", err)
+	}
 	return db, nil
+}
+
+// migrateSourcesV11 为既有库幂等增补 v1.1 列：sources 表加
+// mgmt_key_plain / mgmt_key_hint（PRAGMA 检查缺列再 ALTER，可重入）。
+// 新库经 CREATE TABLE 直接具备两列，本函数为空操作。
+func migrateSourcesV11(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(sources)`)
+	if err != nil {
+		return err
+	}
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, typ string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		cols[name] = true
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, c := range []struct{ name, ddl string }{
+		{"mgmt_key_plain", `ALTER TABLE sources ADD COLUMN mgmt_key_plain TEXT NOT NULL DEFAULT ''`},
+		{"mgmt_key_hint", `ALTER TABLE sources ADD COLUMN mgmt_key_hint TEXT NOT NULL DEFAULT ''`},
+	} {
+		if cols[c.name] {
+			continue
+		}
+		if _, err := db.Exec(c.ddl); err != nil {
+			return fmt.Errorf("add column %s: %w", c.name, err)
+		}
+	}
+	return nil
 }

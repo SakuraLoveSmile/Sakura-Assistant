@@ -77,6 +77,7 @@ func newApp(cfg config) (*app, error) {
 		cfg:          cfg,
 		loginLimiter: newLoginLimiter(),
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
+		httpClientOp: &http.Client{Timeout: 30 * time.Second},
 	}
 	a.re = newRuleEngine(a)
 

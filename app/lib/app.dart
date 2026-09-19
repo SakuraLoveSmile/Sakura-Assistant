@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'bridge/native_bridge.dart';
+import 'feedback/feedback_host.dart';
 import 'state/providers.dart';
 import 'state/router.dart';
 import 'theme/app_theme.dart';
@@ -93,6 +94,9 @@ class _AssistantAppState extends ConsumerState<AssistantApp>
       darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.system,
       routerConfig: router,
+      // 反馈提交组件包在应用 Navigator 之外：路由切换不丢草稿 / 登录态，
+      // 且面板可在任意路由上呼出（结构同组件官方示例）。
+      builder: (context, child) => FeedbackHost(child: child),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

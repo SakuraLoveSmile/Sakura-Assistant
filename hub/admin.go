@@ -50,9 +50,10 @@ func (a *app) installBlock(accessKey string) map[string]any {
 
 func (a *app) handleSourceCreate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name              string  `json:"name"`
-		Kind              string  `json:"kind"`
-		AttachmentBaseURL *string `json:"attachmentBaseUrl"`
+		Name              string          `json:"name"`
+		Kind              string          `json:"kind"`
+		AttachmentBaseURL *string         `json:"attachmentBaseUrl"`
+		MgmtKey           json.RawMessage `json:"mgmtKey"`
 	}
 	if !decodeBody(w, r, &req) {
 		return
@@ -86,15 +87,32 @@ func (a *app) handleSourceCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		src.AttachmentBaseURL = sql.NullString{String: *req.AttachmentBaseURL, Valid: true}
 	}
+	// v1.1 mgmtKey：仅 feedback 类来源可配置；字段出现（含 null）于 device 类 → 拒绝。
+	if len(req.MgmtKey) > 0 {
+		if req.Kind != "feedback" {
+			errInvalid(w, "mgmtKey 仅 feedback 类来源可配置")
+			return
+		}
+		if string(req.MgmtKey) != "null" {
+			var mk string
+			if err := json.Unmarshal(req.MgmtKey, &mk); err != nil || mk == "" || len(mk) > 200 {
+				errInvalid(w, "mgmtKey 需为非空字符串（≤200 字符）")
+				return
+			}
+			src.MgmtKeyPlain = mk
+			src.MgmtKeyHint = hintTail(mk)
+		}
+	}
 
 	var changes []*changeEntry
 	err := a.st.withTx(nil, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(
-			`INSERT INTO sources(`+sourceCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			`INSERT INTO sources(`+sourceCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			src.ID, src.Name, src.Kind, 1, src.KeyHash, src.KeyPlain, src.KeyHint,
 			src.AttachmentBaseURL, src.AgentVersion, src.AgentOS, src.AgentArch, src.Hostname,
 			src.Capabilities, src.LastSeenAt, 0, 0, src.LastBootTime, src.LastSummary,
 			src.PrevSample, src.DeletedAt, src.CreatedAt, src.UpdatedAt,
+			src.MgmtKeyPlain, src.MgmtKeyHint,
 		); err != nil {
 			return err
 		}
@@ -126,7 +144,8 @@ func (a *app) handleSourceGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"source": toSourceJSON(src, a.st.heartbeatSeconds())})
 }
 
-// handleSourcePatch 更新 name/enabled/attachmentBaseUrl（字段出现才更新，attachmentBaseUrl 可为 null）。
+// handleSourcePatch 更新 name/enabled/attachmentBaseUrl/mgmtKey（字段出现才更新，
+// attachmentBaseUrl 与 mgmtKey 可为 null 清除；mgmtKey 仅 feedback 类来源可配置）。
 func (a *app) handleSourcePatch(w http.ResponseWriter, r *http.Request) {
 	var req map[string]json.RawMessage
 	if !decodeBody(w, r, &req) {
@@ -170,14 +189,32 @@ func (a *app) handleSourcePatch(w http.ResponseWriter, r *http.Request) {
 				src.AttachmentBaseURL = nullStr(u)
 			}
 		}
+		if v, ok := req["mgmtKey"]; ok {
+			if src.Kind != "feedback" {
+				return errInvalidRequest("mgmtKey 仅 feedback 类来源可配置")
+			}
+			if string(v) == "null" {
+				src.MgmtKeyPlain = ""
+				src.MgmtKeyHint = ""
+			} else {
+				var mk string
+				if err := json.Unmarshal(v, &mk); err != nil || mk == "" || len(mk) > 200 {
+					return errInvalidRequest("mgmtKey 需为非空字符串（≤200 字符）")
+				}
+				src.MgmtKeyPlain = mk
+				src.MgmtKeyHint = hintTail(mk)
+			}
+		}
 		src.UpdatedAt = fmtTS(nowUTC())
 		en := 0
 		if src.Enabled {
 			en = 1
 		}
 		if _, err := tx.Exec(
-			`UPDATE sources SET name=?, enabled=?, attachment_base_url=?, updated_at=? WHERE id=?`,
-			src.Name, en, src.AttachmentBaseURL, src.UpdatedAt, src.ID); err != nil {
+			`UPDATE sources SET name=?, enabled=?, attachment_base_url=?,
+			 mgmt_key_plain=?, mgmt_key_hint=?, updated_at=? WHERE id=?`,
+			src.Name, en, src.AttachmentBaseURL,
+			src.MgmtKeyPlain, src.MgmtKeyHint, src.UpdatedAt, src.ID); err != nil {
 			return err
 		}
 		if err := a.emitSourceChangeTx(tx, src, &changes); err != nil {
@@ -246,6 +283,57 @@ func (a *app) handleSourceRotateKey(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// mgmtInstallBlock 为管理凭证一次性配置指引：写入 Feedback 服务 env 并重启。
+func (a *app) mgmtInstallBlock(mgmtKey string) map[string]any {
+	note := "## 管理凭证配置\n\n" +
+		"1. 在 Feedback 服务的环境变量中设置 `FEEDBACK_ASSIST_MGMT_KEY` 为上方值（仅此一次明文展示，请妥善保存）。\n" +
+		"2. 该凭证必须与 `FEEDBACK_ASSIST_SOURCE_KEY` / `FEEDBACK_ASSIST_READ_KEY` 不同，否则 Feedback 端拒绝挂载管理面。\n" +
+		"3. 重启 Feedback 服务后管理路由生效；旧管理凭证即刻失效。\n" +
+		"4. 未配置该变量时反馈列表与管理操作不可用（只读详情与附件不受影响）。"
+	return map[string]any{
+		"env":  map[string]any{"FEEDBACK_ASSIST_MGMT_KEY": mgmtKey},
+		"note": note,
+	}
+}
+
+// handleSourceRotateMgmtKey 轮换管理凭证（v1.1）：中枢生成 amk_<48hex>，
+// 仅此一次明文返回；仅 kind=feedback 来源可用（其他/不存在/已删 → 404）。
+func (a *app) handleSourceRotateMgmtKey(w http.ResponseWriter, r *http.Request) {
+	var changes []*changeEntry
+	key := randToken("amk_")
+	err := a.st.withTx(nil, func(tx *sql.Tx) error {
+		src, err := loadSourceTx(tx, r.PathValue("id"))
+		if err != nil {
+			return err
+		}
+		if src.DeletedAt.Valid || src.Kind != "feedback" {
+			return sql.ErrNoRows
+		}
+		src.MgmtKeyPlain = key
+		src.MgmtKeyHint = key[len(key)-4:]
+		src.UpdatedAt = fmtTS(nowUTC())
+		if _, err := tx.Exec(
+			`UPDATE sources SET mgmt_key_plain=?, mgmt_key_hint=?, updated_at=? WHERE id=?`,
+			src.MgmtKeyPlain, src.MgmtKeyHint, src.UpdatedAt, src.ID); err != nil {
+			return err
+		}
+		return a.emitSourceChangeTx(tx, src, &changes)
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			errNotFound(w)
+			return
+		}
+		errInternal(w)
+		return
+	}
+	a.st.publish(changes)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mgmtKey": key,
+		"install": a.mgmtInstallBlock(key),
+	})
+}
+
 // handleSourceDelete 软删除来源：密钥失效，历史保留。
 func (a *app) handleSourceDelete(w http.ResponseWriter, r *http.Request) {
 	var changes []*changeEntry
@@ -259,7 +347,8 @@ func (a *app) handleSourceDelete(w http.ResponseWriter, r *http.Request) {
 		}
 		now := fmtTS(nowUTC())
 		if _, err := tx.Exec(
-			`UPDATE sources SET deleted_at=?, key_hash='', key_plain='', updated_at=? WHERE id=?`,
+			`UPDATE sources SET deleted_at=?, key_hash='', key_plain='',
+			 mgmt_key_plain='', mgmt_key_hint='', updated_at=? WHERE id=?`,
 			now, now, src.ID); err != nil {
 			return err
 		}

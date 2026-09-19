@@ -15,7 +15,7 @@ import (
 )
 
 // hubVersion 为中枢版本号，经 /api/v1/health 与 /api/v1/version 暴露。
-const hubVersion = "0.1.0"
+const hubVersion = "1.1.0"
 
 // tsFmt 为契约规定的时间格式：RFC3339 UTC 毫秒精度。
 const tsFmt = "2006-01-02T15:04:05.000Z"
@@ -68,6 +68,15 @@ func randToken(prefix string) string {
 		panic(err)
 	}
 	return prefix + hex.EncodeToString(b)
+}
+
+// hintTail 取凭证末 4 位用于回显（不足 4 字符取全长，UTF-8 安全）。
+func hintTail(s string) string {
+	rs := []rune(s)
+	if len(rs) > 4 {
+		rs = rs[len(rs)-4:]
+	}
+	return string(rs)
 }
 
 // ---- JSON 与错误信封 ----

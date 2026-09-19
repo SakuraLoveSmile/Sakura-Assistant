@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../api/api_exception.dart';
+import '../feedback/feedback_host.dart';
 import '../models/service_state.dart';
 import '../models/settings.dart';
 import '../state/data_providers.dart';
@@ -27,6 +28,7 @@ class SettingsPage extends ConsumerWidget {
           _DndSection(),
           _RulesSection(),
           _PermissionSection(),
+          _FeedbackSection(),
           _DebugSection(),
           _AccountSection(),
         ],
@@ -453,6 +455,130 @@ class _PermissionSection extends ConsumerWidget {
           padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
           child: Text('「强行停止」应用后系统不再自动拉起服务，需手动打开应用恢复。',
               style: TextStyle(fontSize: 12, color: Colors.grey)),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------- 反馈 ----------------
+
+/// 反馈设置：Feedback 服务地址（与组件面板内「服务器设置」同一槽位）+
+/// 提交入口 + 管理入口。服务地址留空 = 未配置（入口给引导）。
+class _FeedbackSection extends ConsumerStatefulWidget {
+  const _FeedbackSection();
+
+  @override
+  ConsumerState<_FeedbackSection> createState() => _FeedbackSectionState();
+}
+
+class _FeedbackSectionState extends ConsumerState<_FeedbackSection> {
+  bool _saving = false;
+
+  Future<void> _edit(String? current) async {
+    final controller = TextEditingController(text: current ?? '');
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Feedback 服务地址'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.url,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '服务地址',
+            hintText: 'https://feedback.example.com',
+            helperText: '留空并保存可清除配置',
+          ),
+          onSubmitted: (_) =>
+              Navigator.of(ctx).pop(controller.text.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () =>
+                  Navigator.of(ctx).pop(controller.text.trim()),
+              child: const Text('保存')),
+        ],
+      ),
+    );
+    if (saved == null || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      final notifier = ref.read(feedbackServerProvider.notifier);
+      if (saved.isEmpty) {
+        await notifier.clear();
+      } else {
+        final err = await notifier.setServer(saved);
+        if (err != null && mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(err)));
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final server = ref.watch(feedbackServerProvider);
+    final configured = server.value != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionTitle(text: '反馈'),
+        Card(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              ListTile(
+                leading: Icon(Icons.dns_outlined,
+                    color: theme.colorScheme.primary),
+                title: const Text('Feedback 服务'),
+                subtitle: server.isLoading
+                    ? const Text('读取中…')
+                    : Text(
+                        configured ? server.value! : '未配置',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                trailing: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.edit_outlined),
+                onTap: _saving ? null : () => _edit(server.value),
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: Icon(Icons.feedback_outlined,
+                    color: theme.colorScheme.primary),
+                title: const Text('提交反馈'),
+                subtitle: Text(
+                  configured ? '截图标注 / 描述问题 / 附带日志' : '未配置服务',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.outline),
+                ),
+                onTap: () => openFeedbackEntry(context, ref),
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: Icon(Icons.forum_outlined,
+                    color: theme.colorScheme.primary),
+                title: const Text('反馈管理'),
+                subtitle: Text('收件箱 / 归档 / 回收站',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.outline)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/feedback'),
+              ),
+            ],
+          ),
         ),
       ],
     );

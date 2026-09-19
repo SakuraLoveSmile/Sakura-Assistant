@@ -155,6 +155,21 @@ class SeverityBadge extends StatelessWidget {
   }
 }
 
+/// 反馈处理状态色（status）：failed→error、待复核/待补信息→警告、已归档→绿。
+Color feedbackStatusColor(String status, ColorScheme scheme) {
+  switch (status) {
+    case 'failed':
+      return scheme.error;
+    case 'needs_review':
+    case 'needs_info':
+      return const Color(0xFFE8960C);
+    case 'archived':
+      return const Color(0xFF2E9E5B);
+    default:
+      return scheme.outline;
+  }
+}
+
 /// 顶部横幅（中枢不可达 / 手机断网 / 免打扰）。
 class StatusBanner extends StatelessWidget {
   const StatusBanner({

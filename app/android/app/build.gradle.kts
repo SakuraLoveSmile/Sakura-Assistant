@@ -9,11 +9,29 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Release 签名材料：android/key.properties（已 gitignore，T5 生成正式密钥）。
+// Release 签名材料：android/key.properties（已 gitignore；keystore 在 app/assistant-release.keystore）。
+// release 构建缺材料时由 validateReleaseSigning 显式失败，禁止静默回退 debug 签名。
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
+}
+
+// key.properties 完整性检查：缺文件 / 缺键 / storeFile 指向的 keystore 不存在。
+fun releaseSigningProblems(): List<String> {
+    val problems = mutableListOf<String>()
+    if (!keystorePropertiesFile.exists()) {
+        problems += "缺少 ${keystorePropertiesFile.path}"
+    }
+    for (key in listOf("storeFile", "keyAlias", "storePassword", "keyPassword")) {
+        if (keystoreProperties.getProperty(key).isNullOrBlank()) {
+            problems += "key.properties 缺少键或值为空：$key"
+        }
+    }
+    keystoreProperties.getProperty("storeFile")?.takeIf { it.isNotBlank() }?.let {
+        if (!file(it).exists()) problems += "storeFile 指向的 keystore 不存在：${file(it).path}"
+    }
+    return problems
 }
 
 android {
@@ -51,13 +69,43 @@ android {
 
     buildTypes {
         release {
-            // key.properties 存在时用正式签名；缺省回退 debug 便于本地 `flutter run --release`。
-            signingConfig =
-                if (keystorePropertiesFile.exists()) signingConfigs.getByName("release")
-                else signingConfigs.getByName("debug")
+            // 始终使用正式签名；材料缺失时 validateReleaseSigning 先于打包显式失败。
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
+
+// release 前置校验：签名材料缺失/不完整时明确失败并提示生成方式（仅挂 release 任务图，debug 不受影响）。
+val validateReleaseSigning =
+    tasks.register("validateReleaseSigning") {
+        group = "verification"
+        description = "校验 release 签名材料（android/key.properties）是否齐全"
+        doLast {
+            val problems = releaseSigningProblems()
+            if (problems.isNotEmpty()) {
+                throw GradleException(
+                    buildString {
+                        appendLine("release 签名材料不完整，已中止构建：")
+                        problems.forEach { appendLine("  - $it") }
+                        appendLine()
+                        appendLine("生成方式（在 app/android/ 下执行；口令仅写入 key.properties，勿入 Git）：")
+                        appendLine("  keytool -genkeypair -v -keystore app/assistant-release.keystore \\")
+                        appendLine("    -storetype PKCS12 -alias assistant -keyalg RSA -keysize 4096 -validity 10950")
+                        appendLine("  并创建 android/key.properties：")
+                        appendLine("    storeFile=assistant-release.keystore")
+                        appendLine("    keyAlias=assistant")
+                        appendLine("    storePassword=<keystore 口令>")
+                        appendLine("    keyPassword=<key 口令>")
+                    }
+                )
+            }
+        }
+    }
+
+// preReleaseBuild 是 release 变体任务图锚点（assemble/bundle/install 均经过）；packageRelease 兜底。
+tasks
+    .matching { it.name == "preReleaseBuild" || it.name == "packageRelease" }
+    .configureEach { dependsOn(validateReleaseSigning) }
 
 dependencies {
     // SSE 流式读取（bridge.md §3 断线策略、§5 唤醒约束）
