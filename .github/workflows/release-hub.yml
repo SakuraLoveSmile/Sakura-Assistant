@@ -1,0 +1,164 @@
+name: Release Hub Image
+
+# 触发与渠道：
+#   - 推送正式版本标签 v*（如 v1.1.0）：跑测试后构建并推送 ghcr.io/…/assistant-hub（vX.Y.Z + sha + latest）。
+#   - 手动触发（workflow_dispatch）：按输入 ref 构建、按 image_tag 打镜像标签；用于补发既有版本的镜像。
+# 版本一致性：正式标签要求 hub/util.go 的 hubVersion 与标签名匹配，不一致即失败（不推镜像）。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 镜像版本标签（例如 v1.1.0，须与 hubVersion 一致）
+        required: true
+      ref:
+        description: 构建所用 git ref（缺省 main）
+        required: false
+        default: "main"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hub-image-${{ github.ref }}-${{ inputs.image_tag || '' }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/sakuralovesmile/assistant-hub
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  # 发布前门禁：hub 全量测试 + vet + 双架构 Linux 构建（镜像发布前二进制必须能编）。
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: hub/go.sum
+      - name: hub 测试与静态检查
+        working-directory: hub
+        run: |
+          go test ./...
+          go vet ./...
+      - name: Linux 双架构编译验证
+        working-directory: hub
+        run: |
+          GOOS=linux GOARCH=amd64 go build ./...
+          GOOS=linux GOARCH=arm64 go build ./...
+
+  publish:
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # 仅此 job 有推送权限
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 解析镜像版本并与 hubVersion 对齐
+        id: ver
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          INPUT_TAG: ${{ inputs.image_tag }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          hub_ver="$(sed -n 's/^const hubVersion = "\(.*\)"$/\1/p' hub/util.go | head -1)"
+          if [ -z "$hub_ver" ]; then
+            echo "::error::无法从 hub/util.go 解析 hubVersion"; exit 1
+          fi
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF_TYPE" = "tag" ]; then
+            image_tag="$TAG_NAME"
+            if ! printf '%s' "$TAG_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::只接受正式版本标签 vX.Y.Z：$TAG_NAME"; exit 1
+            fi
+            if [ "$TAG_NAME" != "v$hub_ver" ]; then
+              echo "::error::标签 $TAG_NAME 与 hubVersion v$hub_ver 不一致"; exit 1
+            fi
+            tag_commit="$(git rev-parse "refs/tags/$TAG_NAME^{commit}")"
+            if [ "$tag_commit" != "$HEAD_SHA" ]; then
+              echo "::error::标签 $TAG_NAME 指向 $tag_commit，与本次提交 $HEAD_SHA 不一致"; exit 1
+            fi
+          else
+            image_tag="$INPUT_TAG"
+            if ! printf '%s' "$image_tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::image_tag 必须是 vX.Y.Z：$image_tag"; exit 1
+            fi
+            if [ "$image_tag" != "v$hub_ver" ]; then
+              echo "::error::image_tag $image_tag 与 hubVersion v$hub_ver 不一致"; exit 1
+            fi
+          fi
+          echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+          echo "镜像版本 $image_tag（hubVersion=$hub_ver）"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR（GITHUB_TOKEN，无需额外密钥）
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 生成镜像标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.ver.outputs.image_tag }}
+            type=sha,format=long
+            type=raw,value=latest
+
+      - name: 构建并推送中枢镜像（amd64 + arm64，Go 交叉编译）
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: hub
+          file: hub/Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
+
+      - name: 记录并校验镜像 digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+            echo "::error::镜像 digest 为空或非法：$DIGEST"; exit 1
+          fi
+          {
+            echo "image: $IMAGE_NAME"
+            echo "digest: $DIGEST"
+            echo "tags:"
+            printf '%s\n' "$TAGS" | sed 's/^/  - /'
+          } > assistant-hub-image-digest.txt
+          echo "### 生产固定引用" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 上传 digest 记录
+        uses: actions/upload-artifact@v4
+        with:
+          name: assistant-hub-image-digest
+          path: assistant-hub-image-digest.txt
+          retention-days: 90
