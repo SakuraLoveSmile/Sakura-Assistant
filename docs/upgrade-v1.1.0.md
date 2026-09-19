@@ -13,7 +13,9 @@ v1.1.0 新增「反馈管理面」：APK 内提交反馈（截图 + 日志）、
    - 在 Feedback 服务 env 增加 `FEEDBACK_ASSIST_MGMT_KEY=<同一值>` 并重启。
    - 该凭证必须与 `FEEDBACK_ASSIST_READ_KEY`/`FEEDBACK_ASSIST_SOURCE_KEY` 生效值不同，否则管理组不挂载。
    - 只读链路（`READ_KEY`/`SOURCE_KEY`）不变，已配置的接入不需要重建。
-4. **升级中枢到 1.1.0**（替换二进制/镜像，重启即迁移；来源记录新增 mgmtKey 字段，向后兼容）。
+4. **升级中枢到 1.1.0**（三选一：GHCR 镜像 `ghcr.io/sakuralovesmile/assistant-hub:v1.1.0`
+   ——固定 digest `sha256:21a7077a21ddbd96a268235f90e3d29c7f9de6a9171d3b54efbfb4047df47c1b`；
+   compose 本地构建；或直接替换压缩包二进制。重启即迁移；来源记录新增 mgmtKey 字段，向后兼容）。
 5. **安装 APK 1.1.0+2**（签名证书与此前 debug 构建不同：系统会要求先卸载旧包——**卸载前**确认
    本地缓存可丢；服务端数据不受影响）。若手机已装版本即同一签名则直接覆盖升级。
 

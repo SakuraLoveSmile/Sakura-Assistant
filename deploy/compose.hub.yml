@@ -5,10 +5,12 @@
 
 services:
   hub:
-    image: assistant-hub:${HUB_VERSION:-local}
-    build:
-      context: ../hub
-      dockerfile: Dockerfile
+    # 默认用 GHCR 已发布镜像（digest 见各版本 Release 的 assistant-hub-image-digest.txt）。
+    image: ghcr.io/sakuralovesmile/assistant-hub:${HUB_VERSION:-latest}
+    # 本地源码构建替代：取消注释下面三行（build 存在时 compose 本地构建并打上上面的 image 名）。
+    # build:
+    #   context: ../hub
+    #   dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       ASSIST_BIND: ":8795"
