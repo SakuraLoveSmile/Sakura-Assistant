@@ -92,6 +92,10 @@
 
 通知触发点（供 bridge.md 引用）：`incident_open`、`incident_resolved`、独立 `message` 三类需要通知；`incident_update` 只更新已有通知内容（`onlyAlertOnce`）。
 
+v1.1 注记：管理操作（feedback-integration §4.2）引起的 `status` 迁移复用同一 outbox
+事件路径（`updateFeedback` 同事务内构造 `feedback_fault`/`feedback_recovered`），
+事件种类与 faultKey 语义不变；`mgmt_state` 变化本身不产生事件（除非 `status` 同时迁移）。
+
 ## 5. 来源持久队列（对采集 / Feedback 接入层的要求）
 
 - 中枢不可达（连接失败 / 5xx / `403 source_disabled`）→ 事件与指标批次入**本地持久队列**（SQLite 或追加文件），按序补传；绝不阻塞来源自身业务。

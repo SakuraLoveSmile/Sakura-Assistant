@@ -1,0 +1,66 @@
+{
+  "_comment": "POST /api/v1/sources/{srcId}/feedback/{fbId}/action —— 请求体与两类响应示例",
+
+  "request": {
+    "requestId": "rop_01J8WF2E0X4M7K8Q2V9B1C3D4E",
+    "action": "archive",
+    "expectedLifecycleVersion": 0
+  },
+
+  "responseOk": {
+    "ok": true,
+    "action": "archive",
+    "replayed": false,
+    "detail": {
+      "id": "0198f3a2-7c4e-7b2d-9e5f-1a2b3c4d5e6f",
+      "appId": "com.sakurasep.assistant",
+      "appName": "Assistant",
+      "status": "archived",
+      "title": "首页趋势图偶发不刷新",
+      "text": "切换到后台再回来，趋势图停在旧时间点，需要手动下拉才刷新。出现在 v1.0.0。",
+      "createdAt": "2026-09-19T02:11:08.314Z",
+      "updatedAt": "2026-09-19T03:02:41.110Z",
+      "errorSummary": null,
+      "hasScreenshot": true,
+      "logs": [
+        {
+          "id": "9f3b2c10-4a5e-4f8d-9c1b-2e3f4a5b6c7d",
+          "filename": "assistant.log",
+          "byteSize": 18234,
+          "sha256": "16aadddd68f53e1d652dc9162b9589fe7ed50d6eef423951e281f6efed960e32",
+          "source": "manual"
+        }
+      ],
+      "mgmtState": "archived",
+      "lifecycleVersion": 1,
+      "revision": 2,
+      "issueStatus": "open",
+      "collectionState": "queued",
+      "resumePaused": false,
+      "archiveStage": "complete",
+      "kaneoTaskUrl": "https://kaneo.example.com/tasks/417",
+      "archivedAt": "2026-09-19T03:02:41.110Z",
+      "trashedAt": null,
+      "allowedActions": ["unarchive", "trash"],
+      "capabilities": { "manage": true },
+      "sourceId": "src_01J8WEXAMPLE000000000000",
+      "sourceName": "Feedback"
+    }
+  },
+
+  "responseVersionConflict": {
+    "error": {
+      "code": "version_conflict",
+      "message": "记录已被其他操作修改（当前生命周期版本 1），请刷新后重试"
+    },
+    "detail": {
+      "id": "0198f3a2-7c4e-7b2d-9e5f-1a2b3c4d5e6f",
+      "mgmtState": "archived",
+      "lifecycleVersion": 1,
+      "revision": 2,
+      "status": "archived",
+      "allowedActions": ["unarchive", "trash"],
+      "capabilities": { "manage": true }
+    }
+  }
+}

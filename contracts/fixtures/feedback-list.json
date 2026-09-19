@@ -1,0 +1,44 @@
+{
+  "items": [
+    {
+      "id": "0198f3a2-7c4e-7b2d-9e5f-1a2b3c4d5e6f",
+      "appId": "com.sakurasep.assistant",
+      "appName": "Assistant",
+      "status": "archived",
+      "issueStatus": "open",
+      "mgmtState": "inbox",
+      "lifecycleVersion": 0,
+      "title": "首页趋势图偶发不刷新",
+      "textPreview": "切换到后台再回来，趋势图停在旧时间点，需要手动下拉才刷新……",
+      "createdAt": "2026-09-19T02:11:08.314Z",
+      "updatedAt": "2026-09-19T02:14:52.001Z",
+      "errorSummary": null,
+      "hasScreenshot": true,
+      "logCount": 1,
+      "collectionState": "queued",
+      "resumePaused": false,
+      "allowedActions": ["archive", "trash"]
+    },
+    {
+      "id": "0198f2bb-1159-7c8a-8d4e-9f0a1b2c3d4e",
+      "appId": "com.sakurasep.assistant",
+      "appName": "Assistant",
+      "status": "failed",
+      "issueStatus": "open",
+      "mgmtState": "inbox",
+      "lifecycleVersion": 1,
+      "title": null,
+      "textPreview": "通知点了没反应",
+      "createdAt": "2026-09-18T15:40:22.900Z",
+      "updatedAt": "2026-09-18T15:41:03.552Z",
+      "errorSummary": "Kaneo 附件或评论写入结果不确定，待核对",
+      "hasScreenshot": false,
+      "logCount": 0,
+      "collectionState": "queued",
+      "resumePaused": false,
+      "allowedActions": ["trash"]
+    }
+  ],
+  "nextCursor": "2026-09-18T15:40:22.900Z|0198f2bb-1159-7c8a-8d4e-9f0a1b2c3d4e",
+  "counts": { "inbox": 2, "archived": 12, "trash": 1 }
+}
