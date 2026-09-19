@@ -63,6 +63,14 @@ class _Body extends ConsumerWidget {
     final m = detail.message;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    // 「查看反馈详情」前置条件（api-v1 §3.1）：ref.feedbackId 存在且
+    // 消息来源为 feedback 类。来源列表未加载时按消息 kind 前缀兜底判断。
+    final feedbackId = m.feedbackId;
+    final sources = ref.watch(sourcesProvider).value;
+    final isFeedbackSource = feedbackId != null &&
+        (sources == null
+            ? m.kind.startsWith('feedback')
+            : sources.any((s) => s.id == m.sourceId && s.kind == 'feedback'));
     final screenshots =
         m.attachments.where((a) => a.isImage || a.kind == 'screenshot').toList();
     final logs = m.attachments
@@ -100,6 +108,22 @@ class _Body extends ConsumerWidget {
                 Text('反馈 ID：${m.feedbackId}',
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: scheme.outline)),
+              ],
+              if (isFeedbackSource) ...[
+                const SizedBox(height: 4),
+                TextButton.icon(
+                  onPressed: () => context.push(
+                    '/sources/${Uri.encodeComponent(m.sourceId)}'
+                    '/feedback/${Uri.encodeComponent(feedbackId)}',
+                  ),
+                  icon: const Icon(Icons.forum_outlined, size: 18),
+                  label: const Text('查看反馈详情'),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
               ],
             ],
           ),

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../models/fault.dart';
+import '../models/feedback.dart';
 import '../models/json.dart';
 import '../models/message.dart';
 import '../models/metrics.dart';
@@ -101,6 +102,25 @@ class AttachmentBytes {
 
   final List<int> bytes;
   final String contentType;
+}
+
+/// `GET /api/v1/sources/{srcId}/feedback` 响应页（api-v1 §3.1）。
+class FeedbackListResult {
+  const FeedbackListResult({
+    required this.items,
+    this.nextCursor,
+    this.counts = const {},
+    this.sourceId,
+    this.sourceName,
+  });
+
+  final List<FeedbackItem> items;
+  final String? nextCursor;
+
+  /// 同一 q/筛选下三区计数：`{inbox, archived, trash}`。
+  final Map<String, int> counts;
+  final String? sourceId;
+  final String? sourceName;
 }
 
 /// 历史页 filter 取值（契约 `filter=all|unread|feedback|faults`）。
@@ -205,6 +225,43 @@ abstract class AssistantApi {
     DndSettings? dnd,
     int? reportIntervalSeconds,
   });
+
+  // ---- Feedback 管理代理组（api-v1 §3.1，客户端令牌 + 按来源命名空间隔离） ----
+
+  /// 管理列表：`view` ∈ inbox|archived|trash|all；`q` 匹配 title/text/id。
+  Future<FeedbackListResult> getFeedbackList({
+    required String sourceId,
+    String view = 'inbox',
+    String? cursor,
+    int limit = 50,
+    String? q,
+  });
+
+  /// 反馈详情（只读凭证回连透传 + `capabilities.manage` 由中枢重算）。
+  Future<FeedbackDetail> getFeedbackDetail({
+    required String sourceId,
+    required String feedbackId,
+  });
+
+  /// 管理操作。`requestId` 由调用方按次生成（`generateFeedbackRequestId`）；
+  /// 同一操作的超时重发必须复用同一值（服务端幂等去重）。
+  Future<FeedbackActionResult> postFeedbackAction({
+    required String sourceId,
+    required String feedbackId,
+    required String requestId,
+    required String action,
+    int? expectedLifecycleVersion,
+    int? expectedRevision,
+  });
+
+  /// 反馈附件字节地址：`attachmentId` ∈ `screenshot` | `logs/<logId>`
+  /// （路径通配，逐段编码保留结构）。
+  Uri feedbackAttachmentUri(
+      String sourceId, String feedbackId, String attachmentId);
+
+  /// 拉反馈附件字节（带鉴权）。
+  Future<AttachmentBytes> fetchFeedbackAttachment(
+      String sourceId, String feedbackId, String attachmentId);
 }
 
 /// HTTP 实现：Bearer 令牌、401 → refresh → 重试一次 → 仍失败则登出回调。
@@ -254,12 +311,18 @@ class HttpAssistantApi implements AssistantApi {
     Map<String, String?>? query,
     Object? body,
     bool retryOnUnauthorized = true,
+    Duration? requestTimeout,
   }) async {
-    final res = await _send(method, path, query: query, body: body);
+    final res = await _send(method, path,
+        query: query, body: body, requestTimeout: requestTimeout);
     if (res.statusCode == 401 && retryOnUnauthorized) {
       final refreshed = await _tryRefresh();
       if (refreshed) {
-        return _json(method, path, query: query, body: body, retryOnUnauthorized: false);
+        return _json(method, path,
+            query: query,
+            body: body,
+            retryOnUnauthorized: false,
+            requestTimeout: requestTimeout);
       }
       onSessionExpired?.call();
       throw ApiException.fromBody(res.statusCode, res.body, headers: res.headers);
@@ -281,6 +344,7 @@ class HttpAssistantApi implements AssistantApi {
     Map<String, String?>? query,
     Object? body,
     Map<String, String>? extraHeaders,
+    Duration? requestTimeout,
   }) async {
     final uri = _uri(path, query);
     final headers = <String, String>{
@@ -293,7 +357,8 @@ class HttpAssistantApi implements AssistantApi {
       ..headers.addAll(headers);
     if (body != null) request.body = jsonEncode(body);
     try {
-      final streamed = await _client.send(request).timeout(timeout);
+      final streamed =
+          await _client.send(request).timeout(requestTimeout ?? timeout);
       return await http.Response.fromStream(streamed);
     } on TimeoutException catch (e) {
       throw ApiNetworkException(e);
@@ -631,5 +696,111 @@ class HttpAssistantApi implements AssistantApi {
       'reportIntervalSeconds': ?reportIntervalSeconds,
     });
     return Settings.fromJson(json);
+  }
+
+  // ---------------- Feedback 管理代理组（api-v1 §3.1） ----------------
+
+  @override
+  Future<FeedbackListResult> getFeedbackList({
+    required String sourceId,
+    String view = 'inbox',
+    String? cursor,
+    int limit = 50,
+    String? q,
+  }) async {
+    final json = await _json(
+      'GET',
+      '/api/v1/sources/${Uri.encodeComponent(sourceId)}/feedback',
+      query: {
+        'view': view,
+        'cursor': ?cursor,
+        'limit': '$limit',
+        if (q != null && q.isNotEmpty) 'q': q,
+      },
+    );
+    return FeedbackListResult(
+      items: asMapList(json['items']).map(FeedbackItem.fromJson).toList(),
+      nextCursor: asStringOrNull(json['nextCursor']),
+      counts:
+          asMap(json['counts']).map((k, v) => MapEntry(k.toString(), asInt(v))),
+      sourceId: asStringOrNull(json['sourceId']),
+      sourceName: asStringOrNull(json['sourceName']),
+    );
+  }
+
+  @override
+  Future<FeedbackDetail> getFeedbackDetail({
+    required String sourceId,
+    required String feedbackId,
+  }) async {
+    final json = await _json(
+      'GET',
+      '/api/v1/sources/${Uri.encodeComponent(sourceId)}'
+      '/feedback/${Uri.encodeComponent(feedbackId)}',
+    );
+    return FeedbackDetail.fromJson(json);
+  }
+
+  @override
+  Future<FeedbackActionResult> postFeedbackAction({
+    required String sourceId,
+    required String feedbackId,
+    required String requestId,
+    required String action,
+    int? expectedLifecycleVersion,
+    int? expectedRevision,
+  }) async {
+    final json = await _json(
+      'POST',
+      '/api/v1/sources/${Uri.encodeComponent(sourceId)}'
+      '/feedback/${Uri.encodeComponent(feedbackId)}/action',
+      body: {
+        'requestId': requestId,
+        'action': action,
+        'expectedLifecycleVersion': ?expectedLifecycleVersion,
+        'expectedRevision': ?expectedRevision,
+      },
+      // 中枢回连上游超时 30s：客户端留余量；超时后按「结果待确认」处理。
+      requestTimeout: const Duration(seconds: 35),
+    );
+    return FeedbackActionResult.fromJson(json);
+  }
+
+  @override
+  Uri feedbackAttachmentUri(
+      String sourceId, String feedbackId, String attachmentId) {
+    // attachmentId 可能含 `/`（logs/<logId>）：逐段编码保留路径结构。
+    final encodedAtt =
+        attachmentId.split('/').map(Uri.encodeComponent).join('/');
+    return _uri('/api/v1/sources/${Uri.encodeComponent(sourceId)}'
+        '/feedback/${Uri.encodeComponent(feedbackId)}/attachments/$encodedAtt');
+  }
+
+  @override
+  Future<AttachmentBytes> fetchFeedbackAttachment(
+      String sourceId, String feedbackId, String attachmentId) async {
+    final uri = feedbackAttachmentUri(sourceId, feedbackId, attachmentId);
+    http.Response res;
+    try {
+      res = await _client
+          .get(uri, headers: {
+            if (_session?.token != null)
+              'Authorization': 'Bearer ${_session!.token}',
+          })
+          .timeout(timeout);
+    } on TimeoutException catch (e) {
+      throw ApiNetworkException(e);
+    } on SocketException catch (e) {
+      throw ApiNetworkException(e);
+    } on http.ClientException catch (e) {
+      throw ApiNetworkException(e);
+    }
+    if (res.statusCode == 200) {
+      return AttachmentBytes(
+        bytes: res.bodyBytes,
+        contentType: res.headers['content-type'] ?? 'application/octet-stream',
+      );
+    }
+    throw ApiException.fromBody(res.statusCode, res.body, headers: res.headers);
   }
 }

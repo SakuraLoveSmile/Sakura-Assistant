@@ -156,6 +156,8 @@ type sourceRow struct {
 	KeyHash           string
 	KeyPlain          string
 	KeyHint           string
+	MgmtKeyPlain      string // v1.1：管理面回连凭证明文（仅 feedback 类；不随 API 回传）
+	MgmtKeyHint       string // mgmtKey 末 4 位回显
 	AttachmentBaseURL sql.NullString
 	AgentVersion      sql.NullString
 	AgentOS           sql.NullString
@@ -276,6 +278,7 @@ type sourceJSON struct {
 	Status            string            `json:"status"`
 	LastSeenAt        *string           `json:"lastSeenAt"`
 	KeyHint           string            `json:"keyHint"`
+	MgmtKeyHint       *string           `json:"mgmtKeyHint"` // v1.1：未配置为 null
 	AttachmentBaseURL *string           `json:"attachmentBaseUrl"`
 	AgentVersion      *string           `json:"agentVersion"`
 	Hostname          *string           `json:"hostname"`

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../api/api_client.dart';
 import '../api/api_exception.dart';
@@ -113,7 +114,9 @@ class _SourceTile extends ConsumerWidget {
           '${source.isDevice ? '设备采集' : 'Feedback 接入'} · '
           '${source.isOnline ? '在线' : '离线'} · '
           '${source.lastSeenAt != null ? '最后上报 ${formatRelative(source.lastSeenAt)}' : '从未上报'}'
-          '${source.keyHint != null ? ' · 密钥尾号 ${source.keyHint}' : ''}',
+          '${source.keyHint != null ? ' · 密钥尾号 ${source.keyHint}' : ''}'
+          // v1.1：管理凭证末位回显（只显示 hint，绝不暴露 mgmtKey 本体）。
+          '${source.mgmtKeyHint != null ? ' · 管理密钥尾号 ${source.mgmtKeyHint}' : (source.kind == 'feedback' ? ' · 未配置管理密钥' : '')}',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         children: [
@@ -127,6 +130,13 @@ class _SourceTile extends ConsumerWidget {
           OverflowBar(
             alignment: MainAxisAlignment.start,
             children: [
+              if (source.kind == 'feedback')
+                TextButton.icon(
+                  icon: const Icon(Icons.forum_outlined, size: 18),
+                  label: const Text('反馈管理'),
+                  onPressed: () => context.push(
+                      '/feedback?source=${Uri.encodeComponent(source.id)}'),
+                ),
               TextButton.icon(
                 icon: const Icon(Icons.edit_outlined, size: 18),
                 label: const Text('重命名'),

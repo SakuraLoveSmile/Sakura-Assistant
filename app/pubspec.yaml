@@ -2,7 +2,7 @@ name: assistant
 description: "个人助手客户端：设备监控、Feedback 消息与故障队列。"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ^3.11.1
@@ -31,6 +31,12 @@ dependencies:
   fl_chart: 1.2.0
   # hubUrl 等非敏感偏好
   shared_preferences: 2.5.5
+  # 反馈提交组件（登录/截图遮挡/日志附件由组件实现），固定到 Feedback v0.6.0 发布提交
+  feedback_widget:
+    git:
+      url: https://github.com/SakuraLoveSmile/Sakura-Feedback.git
+      path: flutter/feedback
+      ref: 3114c04f1982c5ab7ca7402082679c0aceee4db9
 
 dev_dependencies:
   flutter_test:

@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../models/service_state.dart';
 import '../pages/fault_detail_page.dart';
+import '../pages/feedback_detail_page.dart';
+import '../pages/feedback_list_page.dart';
 import '../pages/history_page.dart';
 import '../pages/home_page.dart';
 import '../pages/login_page.dart';
@@ -72,6 +74,19 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => TrendsPage(
           sourceId: state.pathParameters['sourceId']!,
           sourceName: state.uri.queryParameters['name'],
+        ),
+      ),
+      GoRoute(
+        path: '/feedback',
+        builder: (_, state) => FeedbackListPage(
+          initialSourceId: state.uri.queryParameters['source'],
+        ),
+      ),
+      GoRoute(
+        path: '/sources/:srcId/feedback/:fbId',
+        builder: (_, state) => FeedbackDetailPage(
+          sourceId: state.pathParameters['srcId']!,
+          feedbackId: state.pathParameters['fbId']!,
         ),
       ),
       GoRoute(path: '/sources', builder: (_, _) => const SourcesPage()),

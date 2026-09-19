@@ -8,11 +8,14 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- bridge.md §5：生产仅 HTTPS，release 禁止明文 HTTP。
+         debug 构建经 src/debug 的 networkSecurityConfig 放行 http 开发地址（API 24+ 下
+         networkSecurityConfig 优先于本属性，故 debug 明文能力不受影响）。 -->
     <application
         android:label="assistant"
         android:name=".AssistantApp"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"
