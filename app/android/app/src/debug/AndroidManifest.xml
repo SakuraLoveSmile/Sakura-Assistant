@@ -4,4 +4,20 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <application
+        android:networkSecurityConfig="@xml/network_security_config">
+
+        <!-- 调试专用：adb 广播注入配置 / 启停服务（release 不包含此 receiver）。
+             用法见 app/android/tools/mock_hub.py 与 notes/T1-evidence.md。 -->
+        <receiver
+            android:name=".debug.DebugControlReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.sakurasep.assistant.debug.CONFIGURE" />
+                <action android:name="com.sakurasep.assistant.debug.START_SERVICE" />
+                <action android:name="com.sakurasep.assistant.debug.STOP_SERVICE" />
+            </intent-filter>
+        </receiver>
+    </application>
 </manifest>
