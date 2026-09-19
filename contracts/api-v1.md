@@ -29,6 +29,14 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 | `too_large` | 413 | 请求体超限 |
 | `rate_limited` | 429 | 限流，携带 `Retry-After`（秒） |
 | `attachment_unavailable` | 502 | 附件上游（如 Feedback）不可达或返回错误 |
+| `feedback_upstream_not_configured` | 409 | feedback 来源未配置 `attachmentBaseUrl`（v1.1） |
+| `feedback_mgmt_not_configured` | 409 | feedback 来源未配置 `mgmtKey`（v1.1） |
+| `feedback_mgmt_unsupported` | 409 | 上游 Feedback 服务版本过旧、无管理面（v1.1；提示升级） |
+| `feedback_unavailable` | 502 | 反馈上游不可达 / 超时 / 5xx / 401（v1.1；不暴露凭证细节） |
+| `invalid_state` | 409 | 管理操作当前状态不允许（上游透传，响应可携带 `detail` 刷新快照）（v1.1） |
+| `revision_conflict` | 409 | 归档恢复数据版本不匹配（上游透传，携带 `revision`）（v1.1） |
+| `busy` | 409 | 该反馈正在被处理中（上游透传）（v1.1） |
+| `request_id_conflict` / `request_in_flight` / `outcome_uncertain` | 409 | 管理操作幂等冲突 / 执行中 / 结果不确定（上游透传，见 feedback-integration §4.2）（v1.1） |
 | `internal` | 500 | 未预期错误；绝不回传堆栈 |
 
 限流：`/api/v1/auth/login` 按 IP+用户名滑动窗口（10 次 / 5 分钟）；接入与读取端点 MVP 不限流（独立密钥即凭证）。
@@ -311,6 +319,60 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 
 故障队列历史。响应 `{ "items": [Fault], "nextCursor" }`。
 
+---
+
+### 3.1 Feedback 管理代理组（v1.1，客户端令牌）
+
+按来源代理 Feedback 服务的管理面（feedback-integration §3/§4）。**全部以 `srcId` 命名空间隔离**，
+杜绝跨来源反馈 ID 混淆；APK 不持有任何回连凭证。
+
+通用前置（各端点独立检查，按序判定）：
+
+1. 来源存在、未删除且 `kind=feedback` → 否则 `404 not_found`；
+2. `attachmentBaseUrl` 已配置 → 否则 `409 feedback_upstream_not_configured`；
+3. 管理端点（列表 / 操作）另需 `mgmtKey` 已配置 → 否则 `409 feedback_mgmt_not_configured`；
+4. 上游网络错 / 超时 / 5xx / 401 → `502 feedback_unavailable`；
+   上游 `429` → `429 rate_limited`（透传 `Retry-After`）；
+   上游错误信封中已知 code（`invalid_request`/`not_found`/`version_conflict`/`revision_conflict`/
+   `invalid_state`/`busy`/`request_id_conflict`/`request_in_flight`/`outcome_uncertain`）→ 原样透传；
+   其余上游 4xx → `502 feedback_unavailable`。
+5. 管理路由在上游返回 404 时判定为旧版服务端（无管理面）：列表直接 `409 feedback_mgmt_unsupported`；
+   操作端点先以只读凭证回探详情 —— 详情同样 404 才回 `not_found`，详情存在但缺 `capabilities.manage`
+   → `409 feedback_mgmt_unsupported`。
+
+#### GET /api/v1/sources/{srcId}/feedback?view=inbox|archived|trash|all\&cursor=\&limit=50\&q=\<kw\>
+
+管理凭证回连 `{base}/api/assist/manage/feedback` 并透传响应（`items`/`nextCursor`/`counts`）。
+响应补充 `sourceId`/`sourceName` 字段。
+
+#### GET /api/v1/sources/{srcId}/feedback/{fbId}
+
+只读凭证回连 `{base}/api/assist/feedback/{fbId}` 并透传详情对象，附加 `sourceId`/`sourceName`。
+`capabilities.manage` 由中枢重算：`上游 manage && 本来源已配置 mgmtKey`（端到端可管理才为真）。
+旧版服务端缺管理字段 → 字段缺席 + `capabilities.manage=false`，客户端显示「需升级才能管理」。
+`fbId` 合法字符集 `^[A-Za-z0-9_-]{1,128}$`，非法直接 `404`。
+
+#### POST /api/v1/sources/{srcId}/feedback/{fbId}/action
+
+管理凭证回连 `{base}/api/assist/manage/feedback/{fbId}/action`。中枢只做形状校验后透传请求体：
+
+```jsonc
+{ "requestId": "rop_…",                  // 必填，[A-Za-z0-9._:-]{1,128}
+  "action": "archive|unarchive|trash|restore|resume_processing|retry|recheck",
+  "expectedLifecycleVersion": 3,         // 生命周期动作必填
+  "expectedRevision": 2 }                // retry/recheck 必填
+```
+
+成功/幂等回放透传上游 `200`（`{ok, action, replayed, detail}`）；错误按通用前置规则映射，
+冲突类响应的 `detail` 一并透传供客户端刷新。中枢请求超时 30s：客户端超时后必须按
+「结果待确认」展示并可拉详情核对，**重发必须复用同一 requestId**。
+
+#### GET /api/v1/sources/{srcId}/feedback/{fbId}/attachments/{attId…}
+
+只读凭证回连 `{base}/api/assist/feedback/{fbId}/attachments/{attId}`（`attId` ∈ `screenshot` |
+`logs/<logId>`，路径通配与消息附件同规则）。语义同 `GET /api/v1/messages/:id/attachments/{attId…}`
+（10s 超时、10 MiB 上限、透传标头），只是以反馈 ID 定位而非消息 ID —— 供管理详情页直接取附件。
+
 ### GET /api/v1/metrics/series?source=\<id\>\&metric=\<kind\>\&from=\<iso\>\&to=\<iso\>\&step=raw|5m|1h\&label=\<sel\>
 
 趋势数据。`metric` ∈ `cpu_percent | mem_percent | disk_percent | net_rx_bps | net_tx_bps`；
@@ -329,7 +391,8 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 { "id": "src_…", "name": "飞牛 NAS", "kind": "device",
   "enabled": true, "status": "offline", "lastSeenAt": "<iso>",   // status 语义同 §3 overview
   "keyHint": "…a1b2",                     // 仅末 4 位
-  "attachmentBaseUrl": "http://nas.local:8787",   // feedback 类来源的附件回连地址；device 类为 null
+  "mgmtKeyHint": "…9f8e",                 // v1.1：管理凭证末 4 位；未配置为 null（仅 feedback 类来源有意义）
+  "attachmentBaseUrl": "http://nas.local:8787",   // feedback 类来源的回连基址（只读组+管理组共用）；device 类为 null
   "agentVersion": "0.1.0", "hostname": "fn-nas",
   "capabilities": { … },
   "installHint": null,                    // 创建时一次性返回后不再回显
@@ -339,11 +402,15 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 | 端点 | 语义 |
 |---|---|
 | `GET /api/v1/sources` | `{ "sources": […] }` |
-| `POST /api/v1/sources` `{ "name": "飞牛 NAS", "kind": "device", "attachmentBaseUrl": "…可空" }` | `201 { "source": Source, "accessKey": "ask_…", "install": { "env": {"ASSIST_HUB_URL": "…", "ASSIST_SOURCE_KEY": "ask_…"}, "command": "<shell 单行安装命令>", "note": "<markdown 说明>" } }`。`accessKey` **仅此一次明文**；重名不查重（允许多个同名来源） |
+| `POST /api/v1/sources` `{ "name": "飞牛 NAS", "kind": "device", "attachmentBaseUrl": "…可空", "mgmtKey": "…可空" }` | `201 { "source": Source, "accessKey": "ask_…", "install": { "env": {"ASSIST_HUB_URL": "…", "ASSIST_SOURCE_KEY": "ask_…"}, "command": "<shell 单行安装命令>", "note": "<markdown 说明>" } }`。`accessKey` **仅此一次明文**；`mgmtKey` 仅 feedback 类来源有效（device 类传入按 `invalid_request` 拒绝），中枢库存明文用于回连，永不回传。重名不查重（允许多个同名来源） |
 | `GET /api/v1/sources/:id` | `{ "source": Source }` |
-| `PATCH /api/v1/sources/:id` `{ "name"?, "enabled"?, "attachmentBaseUrl"? }` | `200 { "source": Source }` |
+| `PATCH /api/v1/sources/:id` `{ "name"?, "enabled"?, "attachmentBaseUrl"?, "mgmtKey"? }` | `200 { "source": Source }`；`mgmtKey` 传 `null` 清除、传非空字符串（≤200 字符）直写外部生成的凭证（feedback 类限定） |
 | `POST /api/v1/sources/:id/rotate-key` | `200 { "accessKey": "ask_…", "install": 同创建 }`；旧密钥立即失效，来源事件流不清除 |
-| `DELETE /api/v1/sources/:id` | `204`；指标 / 消息 / 故障历史保留，密钥失效，经 sync 下发 `tombstone(source)` |
+| `POST /api/v1/sources/:id/rotate-mgmt-key` | v1.1：`200 { "mgmtKey": "amk_<48hex>", "install": { "env": {"FEEDBACK_ASSIST_MGMT_KEY": "amk_…"}, "note": "<markdown>" } }`；中枢生成并仅此一次明文返回，旧管理凭证立即失效。仅 `kind=feedback` 来源可用（其他 `404`） |
+| `DELETE /api/v1/sources/:id` | `204`；指标 / 消息 / 故障历史保留，全部凭证失效，经 sync 下发 `tombstone(source)` |
+
+`mgmtKey` 与 `accessKey` 职责互斥（feedback-integration §1）：前者只用于管理组回连，
+后者兼作事件上报与只读回连凭证。两侧配置同一字符串无意义且被 Feedback 端拒绝挂载管理组。
 
 ### 告警规则
 
