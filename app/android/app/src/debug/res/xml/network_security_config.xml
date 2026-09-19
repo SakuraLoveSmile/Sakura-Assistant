@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 仅 debug 构建：允许明文 HTTP，用于连接开发/测试中枢（如 adb reverse 转发的本机 mock）。
+     release 构建不携带本文件且不声明 networkSecurityConfig，默认禁止明文流量（bridge.md §5）。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
