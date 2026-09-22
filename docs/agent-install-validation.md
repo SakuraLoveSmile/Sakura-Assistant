@@ -20,8 +20,8 @@
 | Linux amd64 / arm64 构建与运行 | Hub、Agent 双架构静态构建通过；Agent 两包约 10 MiB，实际文件大小及 SHA256 与发布清单一致。真实 ARM64 `--version`/`--check` 通过；本机没有原生 amd64 系统运行证据 |
 | 隔离真实 systemd | Ubuntu 24.04.5 ARM64 / QEMU HVF：fresh、repeat、同来源轮换、撤销密钥拒绝、精确旧服务迁移、崩溃升级回滚、网络 pending 均通过，详细边界见下方 |
 | 真实 Hub → 原始安装命令 → 真实 Agent | 独立 SQLite + HTTPS 反代 + 本地构建缓存，安装退出 0；真实 status/overview 返回在线、版本及指标，主 agent 独立复核指标序号已增长至 5 |
-| GitHub Actions 正式运行 / 公开资产 | 未开始，待发布授权 |
-| GHCR 发布 / 生产中枢升级 | 未开始，待发布和部署授权 |
+| GitHub Actions 正式运行 / 公开资产 | 已触发（v1.2.0 tag）：首轮因 runner 自带 shellcheck 误报 SC2317 失败，已将 CI 固定到 0.11.0 后重跑 |
+| GHCR 发布 | release-hub.yml 已随 v1.2.0 tag 运行（镜像 v1.2.0 + latest + sha）；生产中枢升级仍待部署授权 |
 | 真实目标服务器 / 手机效果 | 未开始，待指定并授权目标设备 |
 
 ## 完成条件
