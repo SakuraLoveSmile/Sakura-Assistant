@@ -32,6 +32,7 @@ deploy/*.env
 *.db-wal
 *.db-shm
 /data/
+deploy/data/
 dist/
 *.apk
 *.aab
@@ -40,3 +41,10 @@ dist/
 
 # 系统
 .DS_Store
+
+# 协作工具状态（本地子代理团队记录，不属于交付物）
+.agent-teams/
+
+# Python
+__pycache__/
+*.pyc

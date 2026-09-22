@@ -29,6 +29,7 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 | `too_large` | 413 | 请求体超限 |
 | `rate_limited` | 429 | 限流，携带 `Retry-After`（秒） |
 | `attachment_unavailable` | 502 | 附件上游（如 Feedback）不可达或返回错误 |
+| `agent_release_unavailable` | 502 | Agent 发布清单或资产不可达、超限、校验失败或缓存不可用（v1.2） |
 | `feedback_upstream_not_configured` | 409 | feedback 来源未配置 `attachmentBaseUrl`（v1.1） |
 | `feedback_mgmt_not_configured` | 409 | feedback 来源未配置 `mgmtKey`（v1.1） |
 | `feedback_mgmt_unsupported` | 409 | 上游 Feedback 服务版本过旧、无管理面（v1.1；提示升级） |
@@ -172,6 +173,54 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 - 批次允许部分失败：合法事件正常落库，非法条目进 `rejected`，绝不整批 400。
 - 单批 `events` ≤ 100 条，超出 `400 invalid_request`；来源应分批补传。
 - `incidentAction=open` 的事件同时产生一条 `fault_open` 消息并入故障；`update` 并入当前轮次；`resolve` 结束当前轮次（语义见 events.md）。
+
+---
+
+## 2.1 Agent 安装与上报确认（v1.2 兼容新增）
+
+### GET /api/v1/agent/status
+
+来源密钥认证，仅 `kind=device` 可以调用，不接受来源 ID 参数来切换对象。
+
+```jsonc
+{ "sourceId": "src_…", "lastSeenAt": "<iso 或 null>",
+  "lastMetricsSeq": 42, "agentVersion": "1.2.0" } // 尚无指标时 seq 为 0，version 可 null
+```
+
+只读取当前来源状态，不更新心跳，不返回密钥。未知、删除或吊销密钥为 401，
+停用来源为 403 `source_disabled`，Feedback 来源为 403 `forbidden`。
+`lastSeenAt` 可由事件刷新，不能单独作为指标验收。安装器须确认重启前后的
+`lastMetricsSeq` 增长且 `agentVersion` 等于目标版本；服务 active 或 `/health` 成功不足以判定接入成功。
+
+### 公开安装文件（无需认证）
+
+| 路径 | 响应 |
+|---|---|
+| `GET /api/v1/agent/install.sh` | 随中枢构建嵌入的 Bash 安装脚本，不含凭证 |
+| `GET /api/v1/agent/releases/stable` | `ASSIST_AGENT_VERSION` 指定版本的 JSON 清单 |
+| `GET /api/v1/agent/releases/{version}/{asset}` | 指定正式版本的清单、Agent 校验清单或二进制 |
+
+`version` 为不带 `v` 的正式 `X.Y.Z`。资产白名单为 `agent-manifest.json`、
+`agent-SHA256SUMS.txt`、`assistant-agent_X.Y.Z_linux_amd64`、
+`assistant-agent_X.Y.Z_linux_arm64`；不接受路径、任意 URL 或其他仓库文件。
+
+清单结构（摘要和大小仅示意，发布时必须计算真实值）：
+
+```jsonc
+{ "schemaVersion": 1, "version": "1.2.0", "assets": [
+  { "os": "linux", "arch": "amd64", "name": "assistant-agent_1.2.0_linux_amd64",
+    "size": 12345678, "sha256": "<64 位小写十六进制摘要>" },
+  { "os": "linux", "arch": "arm64", "name": "assistant-agent_1.2.0_linux_arm64",
+    "size": 12345678, "sha256": "<64 位小写十六进制摘要>" }
+] }
+```
+
+每种架构恰好一份、单文件最多 128 MiB。二进制是静态可执行文件而非归档包。
+中枢从固定仓库 `SakuraLoveSmile/Sakura-Assistant` 的 `v{version}` Release 获取资产，
+校验大小和 SHA256 后才向设备提供文件，不把客户端下载重定向到 GitHub。
+SHA256 清单按 manifest 中的架构顺序列出 `<sha256>  <name>\n`；manifest 为最后发布的完整性标志。
+缓存默认总量上限 512 MiB，完整资产原子落盘；失败不得提供部分文件或未校验文件。
+无可用缓存且上游失败返回错误信封，不返回伪装成脚本/二进制的错误页。
 
 ---
 
@@ -411,6 +460,12 @@ ID 均为带前缀 ULID：`src_`（来源）、`msg_`（消息）、`flt_`（故
 
 `mgmtKey` 与 `accessKey` 职责互斥（feedback-integration §1）：前者只用于管理组回连，
 后者兼作事件上报与只读回连凭证。两侧配置同一字符串无意义且被 Feedback 端拒绝挂载管理组。
+
+v1.2 安装说明兼容约定：`install.env`、`install.command`、`install.note` 的字段类型不变。
+设备的 `command` 从中枢 HTTPS 域名下载脚本后执行，携带 `--hub`，不再包含来源密钥；
+密钥由操作者在终端隐藏输入，创建/轮换时仍只展示一次。`--reconfigure` 用于已有安装的密钥轮换。
+中枢地址不是可用于安装的 HTTPS URL 时，`command` 为空串，`note` 说明修复配置方法。
+Feedback 来源保留原安装对象和环境变量，但 `command` 为空，不错误安装设备采集程序。
 
 ### 告警规则
 

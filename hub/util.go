@@ -8,6 +8,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,7 +17,7 @@ import (
 )
 
 // hubVersion 为中枢版本号，经 /api/v1/health 与 /api/v1/version 暴露。
-const hubVersion = "1.1.0"
+const hubVersion = "1.2.0"
 
 // tsFmt 为契约规定的时间格式：RFC3339 UTC 毫秒精度。
 const tsFmt = "2006-01-02T15:04:05.000Z"
@@ -113,6 +115,27 @@ func errConflict(w http.ResponseWriter, code, msg string) {
 func errInternal(w http.ResponseWriter) {
 	writeErr(w, http.StatusInternalServerError, "internal", "内部错误")
 }
+
+var installerURLRE = regexp.MustCompile(`^https://([A-Za-z0-9.-]+|\[[A-Fa-f0-9:]+\])(:[0-9]{1,5})?(/[A-Za-z0-9._~%/-]*)?$`)
+
+func normalizedHTTPSURL(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || !installerURLRE.MatchString(raw) || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", false
+	}
+	base := strings.TrimRight(raw, "/")
+	if strings.Contains(u.Path, "//") {
+		return "", false
+	}
+	for _, segment := range strings.Split(u.Path, "/") {
+		if segment == "." || segment == ".." {
+			return "", false
+		}
+	}
+	return base, true
+}
+
+func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 
 // decodeBody 解码请求体，限制 256KiB；出错时已写错误响应并返回 false。
 // 支持 Content-Encoding: gzip（解压后同样限 256KiB）。

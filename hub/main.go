@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -46,20 +47,24 @@ func getenvInt64(key string, def int64) int64 {
 
 // loadConfig 从环境变量装配配置。
 func loadConfig() config {
+	dbPath := getenv("ASSIST_DB_PATH", "assistant-hub.db")
 	return config{
-		bind:              getenv("ASSIST_BIND", ":8795"),
-		dbPath:            getenv("ASSIST_DB_PATH", "assistant-hub.db"),
-		adminUser:         getenv("ASSIST_ADMIN_USER", "admin"),
-		adminPassword:     os.Getenv("ASSIST_ADMIN_PASSWORD"),
-		baseURL:           getenv("ASSIST_BASE_URL", "http://localhost:8795"),
-		rawDays:           getenvInt("ASSIST_RETENTION_RAW_DAYS", 7),
-		rollupDays:        getenvInt("ASSIST_RETENTION_ROLLUP_DAYS", 90),
-		messagesDays:      getenvInt("ASSIST_RETENTION_MESSAGES_DAYS", 90),
-		changesDays:       getenvInt("ASSIST_RETENTION_CHANGES_DAYS", 7),
-		changesMinSeq:     getenvInt64("ASSIST_RETENTION_CHANGES_MIN_SEQ", 100000),
-		heartbeatInterval: 2 * time.Second,
-		rollupInterval:    time.Minute,
-		retentionInterval: time.Hour,
+		bind:               getenv("ASSIST_BIND", ":8795"),
+		dbPath:             dbPath,
+		adminUser:          getenv("ASSIST_ADMIN_USER", "admin"),
+		adminPassword:      os.Getenv("ASSIST_ADMIN_PASSWORD"),
+		baseURL:            getenv("ASSIST_BASE_URL", "http://localhost:8795"),
+		rawDays:            getenvInt("ASSIST_RETENTION_RAW_DAYS", 7),
+		rollupDays:         getenvInt("ASSIST_RETENTION_ROLLUP_DAYS", 90),
+		messagesDays:       getenvInt("ASSIST_RETENTION_MESSAGES_DAYS", 90),
+		changesDays:        getenvInt("ASSIST_RETENTION_CHANGES_DAYS", 7),
+		changesMinSeq:      getenvInt64("ASSIST_RETENTION_CHANGES_MIN_SEQ", 100000),
+		heartbeatInterval:  2 * time.Second,
+		rollupInterval:     time.Minute,
+		retentionInterval:  time.Hour,
+		agentVersion:       getenv("ASSIST_AGENT_VERSION", hubVersion),
+		agentCacheDir:      getenv("ASSIST_AGENT_CACHE_DIR", filepath.Join(filepath.Dir(dbPath), "agent-cache")),
+		agentCacheMaxBytes: getenvInt64("ASSIST_AGENT_CACHE_MAX_BYTES", 512*1024*1024),
 	}
 }
 
@@ -79,6 +84,16 @@ func newApp(cfg config) (*app, error) {
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
 		httpClientOp: &http.Client{Timeout: 30 * time.Second},
 	}
+	if a.cfg.agentVersion == "" {
+		a.cfg.agentVersion = hubVersion
+	}
+	if a.cfg.agentCacheDir == "" {
+		a.cfg.agentCacheDir = filepath.Join(filepath.Dir(a.cfg.dbPath), "agent-cache")
+	}
+	if a.cfg.agentCacheMaxBytes <= 0 {
+		a.cfg.agentCacheMaxBytes = 512 * 1024 * 1024
+	}
+	a.agentCache = newAgentCache(a.cfg.agentCacheDir, a.cfg.agentCacheMaxBytes)
 	a.re = newRuleEngine(a)
 
 	// 初始化规则 / 设置文档（首启写默认集）。

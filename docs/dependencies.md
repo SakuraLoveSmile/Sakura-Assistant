@@ -74,9 +74,11 @@ dev：`flutter_test`、`mocktail`（或 `mockito`）、`golden_toolkit`（可选
 
 | 组件 | 说明 |
 |---|---|
-| `compose.hub.yml` | 中枢单容器（SQLite 卷）；Caddy 反代示例（TLS 自动签发） |
-| `hub.env.example` | `ASSIST_ADMIN_USER/PASSWORD`/`ASSIST_DB_PATH`/`ASSIST_BASE_URL` 等样例 |
-| agent 安装 | systemd unit + 二进制（T5 出安装脚本；NAS 侧视 fnOS 支持用 systemd 或开机任务） |
+| `docker-compose.yml` | 中枢单容器（本地目录挂载）；Caddy 反代示例（TLS 自动签发） |
+| `.env.example` | `ASSIST_ADMIN_USER/PASSWORD`/`ASSIST_DB_PATH`/`ASSIST_BASE_URL` 等样例 |
+| agent 安装 | Linux amd64/arm64 + systemd；中枢域名提供脚本和校验后的 Release 二进制；详见 `agent-install.md` |
+| 安装器依赖 | Bash、curl、jq、sha256sum、timeout（coreutils）、flock（util-linux）、systemd 及 Linux 基础命令；缺失时明确提示，不自动安装系统软件 |
+| Agent 下载缓存 | `ASSIST_AGENT_VERSION` 固定稳定版；`ASSIST_AGENT_CACHE_DIR` 指定磁盘目录；`ASSIST_AGENT_CACHE_MAX_BYTES` 默认 512 MiB |
 
 ## 数据保留（契约值）
 
