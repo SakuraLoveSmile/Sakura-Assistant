@@ -13,19 +13,22 @@ import (
 
 // config 为运行配置（环境变量驱动）。
 type config struct {
-	bind              string
-	dbPath            string
-	adminUser         string
-	adminPassword     string
-	baseURL           string
-	rawDays           int
-	rollupDays        int
-	messagesDays      int
-	changesDays       int
-	changesMinSeq     int64
-	heartbeatInterval time.Duration
-	rollupInterval    time.Duration
-	retentionInterval time.Duration
+	bind               string
+	dbPath             string
+	adminUser          string
+	adminPassword      string
+	baseURL            string
+	rawDays            int
+	rollupDays         int
+	messagesDays       int
+	changesDays        int
+	changesMinSeq      int64
+	heartbeatInterval  time.Duration
+	rollupInterval     time.Duration
+	retentionInterval  time.Duration
+	agentVersion       string
+	agentCacheDir      string
+	agentCacheMaxBytes int64
 }
 
 // app 为中枢应用：存储、广播、规则引擎、HTTP 路由。
@@ -38,6 +41,8 @@ type app struct {
 	loginLimiter *loginLimiter
 	httpClient   *http.Client // 只读回连（附件/详情，10s）
 	httpClientOp *http.Client // 管理面回连（列表/操作，30s）
+	agentCache   *agentCache
+	agentHTTP    *http.Client // 测试注入；生产始终使用固定 GitHub 上游
 }
 
 // routes 注册全部 v1 端点。
@@ -53,6 +58,10 @@ func (a *app) routes() http.Handler {
 	// 来源接入组
 	mux.HandleFunc("POST /api/v1/ingest/metrics", a.sourceKeyAuth(a.handleIngestMetrics))
 	mux.HandleFunc("POST /api/v1/ingest/events", a.sourceKeyAuth(a.handleIngestEvents))
+	mux.HandleFunc("GET /api/v1/agent/install.sh", a.handleAgentInstallScript)
+	mux.HandleFunc("GET /api/v1/agent/releases/stable", a.handleAgentStable)
+	mux.HandleFunc("GET /api/v1/agent/releases/{version}/{asset}", a.handleAgentAsset)
+	mux.HandleFunc("GET /api/v1/agent/status", a.agentStatusAuth(a.handleAgentStatus))
 
 	// 客户端读取组
 	mux.HandleFunc("GET /api/v1/overview", a.requireClient(a.handleOverview))

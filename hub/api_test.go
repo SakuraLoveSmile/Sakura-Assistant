@@ -415,11 +415,8 @@ func TestSourcesCRUD(t *testing.T) {
 	if inst["env"].(map[string]any)["ASSIST_HUB_URL"] != "http://hub.test" {
 		t.Fatalf("env: %v", inst)
 	}
-	if inst["command"] == "" || inst["note"] == "" {
-		t.Fatal("install incomplete")
-	}
-	if !strings.Contains(inst["command"].(string), "http://hub.test") {
-		t.Fatal("command should use base URL")
+	if inst["command"] != "" || inst["note"] == "" {
+		t.Fatal("insecure development URL must not produce install command")
 	}
 	// 列表里 keyHint 只回显末 4 位，绝不明文。
 	if src["keyHint"] != key[len(key)-4:] {

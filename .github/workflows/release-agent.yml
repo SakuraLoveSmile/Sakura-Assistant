@@ -1,0 +1,148 @@
+name: Release Assistant Agent
+on:
+  push: {tags: ["v*"]}
+  workflow_dispatch:
+    inputs:
+      tag: {description: "正式版本标签（vX.Y.Z）", required: true, type: string}
+      ref: {description: "构建所用 git ref", required: true, default: main, type: string}
+permissions:
+  contents: read
+concurrency:
+  group: assistant-agent-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+env:
+  REPOSITORY: SakuraLoveSmile/Sakura-Assistant
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      ref: ${{ steps.v.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "${{ inputs.ref || github.ref }}"
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: agent/go.sum
+      - id: v
+        env:
+          EVENT_NAME: "${{ github.event_name }}"
+          PUSH_TAG: "${{ github.ref_name }}"
+          INPUT_TAG: "${{ inputs.tag }}"
+          INPUT_REF: "${{ inputs.ref }}"
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = push ]; then tag="$PUSH_TAG"; build_ref="$tag"; else tag="$INPUT_TAG"; build_ref="$INPUT_REF"; fi
+          printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
+          version="$(printf '%s' "$tag" | cut -c2-)"
+          tag_commit="$(git rev-parse --verify "refs/tags/$tag^{commit}")"
+          ref_commit="$(git rev-parse --verify "$build_ref^{commit}")"
+          [ "$tag_commit" = "$ref_commit" ] || { echo "::error::ref must resolve to tag commit"; exit 1; }
+          [ "$EVENT_NAME" != push ] || [ "$tag_commit" = "$GITHUB_SHA" ] || exit 1
+          printf 'tag=%s\nref=%s\nversion=%s\n' "$tag" "$tag_commit" "$version" >> "$GITHUB_OUTPUT"
+          echo "Building $version from $build_ref ($ref_commit)"
+      - name: Agent tests and vet
+        working-directory: agent
+        run: go test ./... && go vet ./...
+      - name: Validate release and installer scripts
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s scripts/agent-release -p 'test_*.py' -v
+          bash -n hub/installer/install.sh
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y shellcheck
+          fi
+          shellcheck hub/installer/install.sh hub/installer/test_install.sh
+          bash hub/installer/test_install.sh
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "${{ needs.validate.outputs.ref }}"
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: agent/go.sum
+      - name: Build and execute both target binaries
+        working-directory: agent
+        env:
+          VERSION: "${{ needs.validate.outputs.version }}"
+        run: |
+          set -euo pipefail
+          mkdir -p ../agent-dist
+          prefix="assistant-agent_$VERSION"
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$VERSION" -o "../agent-dist/${prefix}_linux_${arch}" ./cmd/assistant-agent
+          done
+          file "../agent-dist/${prefix}_linux_amd64" | grep -F x86-64
+          file "../agent-dist/${prefix}_linux_arm64" | grep -F "ARM aarch64"
+          "../agent-dist/${prefix}_linux_amd64" --version | grep -F "assistant-agent $VERSION (linux/amd64)"
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - name: Execute arm64 binary under QEMU
+        working-directory: agent
+        env:
+          VERSION: "${{ needs.validate.outputs.version }}"
+        run: |
+          set -euo pipefail
+          prefix="assistant-agent_$VERSION"
+          docker run --rm --platform linux/arm64 -v "$GITHUB_WORKSPACE/agent-dist:/dist:ro" alpine:3.20 "/dist/${prefix}_linux_arm64" --version | grep -F "assistant-agent $VERSION (linux/arm64)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: assistant-agent-assets
+          path: agent-dist/
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "${{ needs.validate.outputs.ref }}"
+          fetch-depth: 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: assistant-agent-assets
+          path: agent-dist
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Prepare checksums and manifest
+        env:
+          VERSION: "${{ needs.validate.outputs.version }}"
+        run: python3 scripts/agent-release/release.py prepare --version "$VERSION" --dir "$GITHUB_WORKSPACE/agent-dist"
+      - id: release
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          TAG: "${{ needs.validate.outputs.tag }}"
+          REPOSITORY: "${{ env.REPOSITORY }}"
+        run: |
+          set -euo pipefail
+          release_info="$(python3 -B scripts/agent-release/release.py ensure --repo "$REPOSITORY" --tag "$TAG")"
+          release_id="$(printf '%s' "$release_info" | jq -er .release_id)"
+          publish="$(printf '%s' "$release_info" | jq -r .publish)"
+          printf 'release_id=%s\npublish=%s\n' "$release_id" "$publish" >> "$GITHUB_OUTPUT"
+      - name: Upload and verify, manifest last
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          REPOSITORY: "${{ env.REPOSITORY }}"
+          RELEASE_ID: "${{ steps.release.outputs.release_id }}"
+          TAG: "${{ needs.validate.outputs.tag }}"
+          PUBLISH: "${{ steps.release.outputs.publish }}"
+        run: |
+          set -euo pipefail
+          args=(); [ "$PUBLISH" = true ] && args+=(--publish)
+          python3 scripts/agent-release/release.py publish --repo "$REPOSITORY" --release-id "$RELEASE_ID" --tag "$TAG" --dir "$GITHUB_WORKSPACE/agent-dist" "${args[@]}"

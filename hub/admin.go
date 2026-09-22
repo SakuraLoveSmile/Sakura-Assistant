@@ -26,21 +26,31 @@ func (a *app) handleSources(w http.ResponseWriter, r *http.Request) {
 }
 
 // installBlock 生成创建 / 轮换时一次性返回的安装指引。
-func (a *app) installBlock(accessKey string) map[string]any {
-	base := a.cfg.baseURL
-	// 单行 systemd 安装命令（假定 assistant-agent 二进制已置于 /usr/local/bin）。
-	command := fmt.Sprintf(
-		`sudo sh -c 'printf "[Unit]\nDescription=Assistant Agent\nAfter=network-online.target\n\n[Service]\nEnvironment=ASSIST_HUB_URL=%s\nEnvironment=ASSIST_SOURCE_KEY=%s\nExecStart=/usr/local/bin/assistant-agent\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n" > /etc/systemd/system/assistant-agent.service && systemctl daemon-reload && systemctl enable --now assistant-agent'`,
-		base, accessKey)
-	note := "## 安装说明\n\n" +
-		"前提：已把 `assistant-agent` 二进制部署到 `/usr/local/bin/`（需 systemd 的 Linux 主机）。\n\n" +
-		"1. 执行上方 `command` 单行命令：写入 `assistant-agent.service` 并启用启动。\n" +
-		"2. 环境变量：`ASSIST_HUB_URL` 为中枢地址，`ASSIST_SOURCE_KEY` 为本来源密钥（仅此一次明文展示，请妥善保存）。\n" +
-		"3. `systemctl status assistant-agent` 确认运行；日志经 `journalctl -u assistant-agent` 查看。\n" +
-		"4. 密钥泄露时用「轮换密钥」接口重新签发，旧密钥即刻失效。"
+// 安装命令只引用中枢地址，密钥由安装脚本交互读取，避免进入 shell 历史和进程参数。
+func (a *app) installBlock(accessKey, kind string, reconfigure bool) map[string]any {
+	hubURL := a.cfg.baseURL
+	base, secure := normalizedHTTPSURL(hubURL)
+	command := ""
+	note := ""
+	if kind == "device" {
+		note = "## 安装说明\n\n"
+		if secure {
+			q := shellQuote(base + "/api/v1/agent/install.sh")
+			flag := ""
+			if reconfigure {
+				flag = " --reconfigure"
+			}
+			command = fmt.Sprintf("(tmpdir=$(mktemp -d) && trap 'rm -rf \"$tmpdir\"' EXIT && curl -q --fail --silent --show-error --max-redirs 0 --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 --max-time 120 %s -o \"$tmpdir/install.sh\" && if [ \"$(id -u)\" -eq 0 ]; then bash \"$tmpdir/install.sh\" --hub %s%s; else sudo bash \"$tmpdir/install.sh\" --hub %s%s; fi)", q, shellQuote(base), flag, shellQuote(base), flag)
+			note += "在 Linux + systemd 服务器执行上方命令，安装器会安全提示输入本来源密钥并等待首次指标上报。重复执行会保留已有队列和配置。旧版手工服务须先迁移，再轮换密钥；轮换后使用新命令重新输入同一来源的密钥。\n"
+		} else {
+			note += "当前中枢地址不适合安全安装（须为 HTTPS，不能含凭证、查询或特殊字符）。请修正 ASSIST_BASE_URL 后重新获取安装说明。\n"
+		}
+	} else {
+		note = "Feedback 来源不安装 assistant-agent；保留此 install 字段以兼容旧客户端。"
+	}
 	return map[string]any{
 		"env": map[string]any{
-			"ASSIST_HUB_URL":    base,
+			"ASSIST_HUB_URL":    hubURL,
 			"ASSIST_SOURCE_KEY": accessKey,
 		},
 		"command": command,
@@ -127,7 +137,7 @@ func (a *app) handleSourceCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"source":    toSourceJSON(src, a.st.heartbeatSeconds()),
 		"accessKey": key,
-		"install":   a.installBlock(key),
+		"install":   a.installBlock(key, req.Kind, false),
 	})
 }
 
@@ -277,9 +287,14 @@ func (a *app) handleSourceRotateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.st.publish(changes)
+	src, err := a.st.loadSource(r.PathValue("id"))
+	if err != nil || src.DeletedAt.Valid {
+		errNotFound(w)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"accessKey": key,
-		"install":   a.installBlock(key),
+		"install":   a.installBlock(key, src.Kind, true),
 	})
 }
 
