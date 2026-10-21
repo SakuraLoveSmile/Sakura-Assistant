@@ -33,7 +33,7 @@
 
 - Go 1.26.5（`/opt/homebrew/bin/go`）；Flutter 3.41.3 / Dart 3.11.1（`~/flutter/bin`，不在 PATH，用全路径或 `export PATH="$HOME/flutter/bin:$PATH"`）
 - Android SDK：`~/Library/Android/sdk`（platforms 34–37、build-tools 35/36、cmdline-tools、ndk）；
-  `adb` 在 PATH；**小米 10（umi）已连接**（`adb devices` 可见 `8085d06e`）
+  `adb` 在 PATH；**小米 10（umi）已连接**（`adb devices` 可见 `<DEVICE_SERIAL>`）
 - JDK：Homebrew `openjdk@17`/`@21`（`/opt/homebrew/opt/openjdk@17`）；Gradle 用 `JAVA_HOME` 指向它们
 - node 22 + pnpm（Feedback 仓测试用）；Docker CLI 在但守护进程常未启动（`open -a Docker` 或跳过容器验证）
 - 部署目标是 Linux；采集程序须 `GOOS=linux` 交叉编译验证（amd64 服务器 + arm64 NAS 视型号而定）
